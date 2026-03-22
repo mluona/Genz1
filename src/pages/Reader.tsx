@@ -43,34 +43,8 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
           if (blobUrl) URL.revokeObjectURL(blobUrl);
         };
       } else if (initialSrc.includes('gateway.storjshare.io')) {
-        let active = true;
-        fetch(`/api/storj-get-url?url=${encodeURIComponent(initialSrc)}`)
-          .then(async res => {
-            if (!res.ok) {
-              const text = await res.text();
-              console.error('Storj presign GET error:', res.status, text);
-              throw new Error(`HTTP error! status: ${res.status}`);
-            }
-            return res.json();
-          })
-          .then(data => {
-            if (active && data.url) {
-              setSrc(data.url);
-              setLoading(false);
-            } else if (active) {
-              console.error('Storj presign GET missing URL:', data);
-              setSrc(initialSrc);
-              setLoading(false);
-            }
-          })
-          .catch((err) => {
-            console.error('Storj presign GET fetch error:', err);
-            if (active) {
-              setSrc(initialSrc);
-              setLoading(false);
-            }
-          });
-        return () => { active = false; };
+        setSrc(`/api/storj-image?url=${encodeURIComponent(initialSrc)}`);
+        setLoading(false);
       } else {
         setSrc(initialSrc);
         setLoading(false);
@@ -118,23 +92,8 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
               if (isMounted) setSrc(content);
             }
           } else if (content && content.includes('gateway.storjshare.io')) {
-            try {
-              const res = await fetch(`/api/storj-get-url?url=${encodeURIComponent(content)}`);
-              if (!res.ok) {
-                const text = await res.text();
-                console.error('Storj presign GET error (fetchPage):', res.status, text);
-                throw new Error(`HTTP error! status: ${res.status}`);
-              }
-              const data = await res.json();
-              if (data.url && isMounted) {
-                setSrc(data.url);
-              } else if (isMounted) {
-                console.error('Storj presign GET missing URL (fetchPage):', data);
-                setSrc(content);
-              }
-            } catch (e) {
-              console.error('Storj presign GET fetch error (fetchPage):', e);
-              if (isMounted) setSrc(content);
+            if (isMounted) {
+              setSrc(`/api/storj-image?url=${encodeURIComponent(content)}`);
             }
           } else if (isMounted) {
             setSrc(content);
