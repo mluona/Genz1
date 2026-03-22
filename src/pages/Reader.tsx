@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Series, Chapter } from '../types';
 
 const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical', onLoaded }: { seriesId: string, chapterId: string, pageIndex: number, initialSrc: string, mode?: 'vertical' | 'horizontal' | 'preload', onLoaded?: () => void }) => {
-  const needsProcessing = initialSrc && (initialSrc.startsWith('data:image/') || initialSrc.includes('gateway.storjshare.io'));
+  const needsProcessing = initialSrc && initialSrc.startsWith('data:image/');
   const [src, setSrc] = useState<string>(needsProcessing ? '' : initialSrc);
   const [loading, setLoading] = useState(needsProcessing || !initialSrc);
   const [isVisible, setIsVisible] = useState(mode === 'preload' ? true : false); // Preload immediately
@@ -42,9 +42,6 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
           active = false; 
           if (blobUrl) URL.revokeObjectURL(blobUrl);
         };
-      } else if (initialSrc.includes('gateway.storjshare.io')) {
-        setSrc(`/api/storj-image?url=${encodeURIComponent(initialSrc)}`);
-        setLoading(false);
       } else {
         setSrc(initialSrc);
         setLoading(false);
@@ -90,10 +87,6 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
               }
             } catch (e) {
               if (isMounted) setSrc(content);
-            }
-          } else if (content && content.includes('gateway.storjshare.io')) {
-            if (isMounted) {
-              setSrc(`/api/storj-image?url=${encodeURIComponent(content)}`);
             }
           } else if (isMounted) {
             setSrc(content);

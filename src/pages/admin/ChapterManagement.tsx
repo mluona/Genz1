@@ -309,22 +309,12 @@ export const ChapterManagement: React.FC = () => {
           chapterNumber,
           content: isNovel ? [chData.content] : [],
           pageCount: isNovel ? (chData.content.split(/\s+/).filter(Boolean).length || 0) : 0,
-          createdAt: Timestamp.now(),
+          publishDate: Timestamp.now(),
           views: 0
         });
         
         if (!isNovel && chData.images) {
           let useStorj = true;
-          try {
-            const testRes = await fetch('/api/storj-presign', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: 'test.txt', contentType: 'text/plain' })
-            });
-            if (!testRes.ok) useStorj = false;
-          } catch (e) {
-            useStorj = false;
-          }
 
           let pageIndex = 0;
           const uploadedUrls: string[] = [];
@@ -517,16 +507,6 @@ export const ChapterManagement: React.FC = () => {
           setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Compressing and uploading pages...`]);
           
           let useStorj = true;
-          try {
-            const testRes = await fetch('/api/storj-presign', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: 'test.txt', contentType: 'text/plain' })
-            });
-            if (!testRes.ok) useStorj = false;
-          } catch (e) {
-            useStorj = false;
-          }
 
           if (useStorj) {
             const uploadedUrls: string[] = [];
@@ -706,21 +686,6 @@ export const ChapterManagement: React.FC = () => {
       // Save pages to subcollection for non-novels
       if (chapterId && !isNovel) {
         let useStorj = true;
-        try {
-          // Check if Storj is configured by making a test request
-          const testRes = await fetch('/api/storj-presign', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename: 'test.txt', contentType: 'text/plain' })
-          });
-          if (!testRes.ok) {
-            useStorj = false;
-            console.warn("Storj is not configured or failed to generate presigned URL. Falling back to Firestore storage.");
-          }
-        } catch (e) {
-          useStorj = false;
-          console.warn("Failed to check Storj configuration. Falling back to Firestore storage.", e);
-        }
 
         let finalContent = [...formData.content];
 

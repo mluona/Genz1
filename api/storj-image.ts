@@ -1,10 +1,15 @@
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export default async function handler(req: any, res: any) {
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   try {
     const { url } = req.query;
-    if (!url || typeof url !== "string") {
-      return res.status(400).send("URL is required");
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: "URL is required" });
     }
 
     const accessKeyId = process.env.STORJ_ACCESS_KEY_ID;
@@ -13,7 +18,7 @@ export default async function handler(req: any, res: any) {
     const endpoint = process.env.STORJ_ENDPOINT;
 
     if (!accessKeyId || !secretAccessKey || !bucketName || !endpoint) {
-      return res.status(500).send("Storj credentials not configured");
+      return res.status(500).json({ error: "Storj credentials not configured" });
     }
 
     const s3 = new S3Client({
@@ -25,40 +30,22 @@ export default async function handler(req: any, res: any) {
       },
     });
 
-    let key = url;
-    try {
-      const parsedUrl = new URL(url);
-      let pathname = parsedUrl.pathname;
-      if (pathname.startsWith(`/${bucketName}/`)) {
-        key = pathname.substring(bucketName.length + 2);
-      } else if (pathname.startsWith("/")) {
-        key = pathname.substring(1);
-      }
-    } catch (e) {
-      // Ignore parsing errors, use url as key
+    const keyMatch = url.match(/manga\/.+$/);
+    if (!keyMatch) {
+      return res.status(400).json({ error: "Invalid Storj URL format" });
     }
+
+    const key = keyMatch[0];
 
     const command = new GetObjectCommand({
       Bucket: bucketName,
       Key: key,
     });
 
-    const response = await s3.send(command);
-
-    if (response.ContentType) {
-      res.setHeader("Content-Type", response.ContentType);
-    }
-    res.setHeader("Cache-Control", "public, max-age=31536000");
-
-    if (response.Body) {
-      const byteArray = await response.Body.transformToByteArray();
-      const buffer = Buffer.from(byteArray);
-      res.send(buffer);
-    } else {
-      res.status(404).send("Image not found");
-    }
+    const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+    res.redirect(signedUrl);
   } catch (error: any) {
-    console.error("Storj Image Proxy Error:", error.message);
-    res.status(500).send("Failed to fetch image from Storj");
+    console.error("Storj Get URL Error:", error.message);
+    res.status(500).json({ error: "Failed to generate signed URL" });
   }
 }
