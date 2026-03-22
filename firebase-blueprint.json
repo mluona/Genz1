@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "Series": {
+      "title": "Series",
+      "description": "Represents a manga, manhwa, or novel series.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the series" },
+        "description": { "type": "string", "description": "Synopsis of the series" },
+        "coverImage": { "type": "string", "description": "URL to the cover image" },
+        "status": { "type": "string", "enum": ["Ongoing", "Completed", "Hiatus", "Dropped"], "description": "Current status of the series" },
+        "type": { "type": "string", "enum": ["Manga", "Manhwa", "Novel"], "description": "Type of the work" },
+        "genres": { "type": "array", "items": { "type": "string" }, "description": "List of genres" },
+        "tags": { "type": "array", "items": { "type": "string" }, "description": "List of tags" },
+        "author": { "type": "string", "description": "Author of the series" },
+        "artist": { "type": "string", "description": "Artist of the series" },
+        "releaseYear": { "type": "integer", "description": "Year of release" },
+        "rating": { "type": "number", "description": "Average rating (1-5)" },
+        "ratingCount": { "type": "integer", "description": "Number of ratings" },
+        "views": { "type": "integer", "description": "Total view count" },
+        "dailyViews": { "type": "integer", "description": "Views today" },
+        "weeklyViews": { "type": "integer", "description": "Views this week" },
+        "monthlyViews": { "type": "integer", "description": "Views this month" },
+        "lastUpdated": { "type": "string", "format": "date-time", "description": "Last update timestamp" },
+        "slug": { "type": "string", "description": "URL friendly identifier" }
+      },
+      "required": ["title", "type", "status", "slug"]
+    },
+    "Chapter": {
+      "title": "Chapter",
+      "description": "Represents a single chapter of a series.",
+      "type": "object",
+      "properties": {
+        "seriesId": { "type": "string", "description": "ID of the parent series" },
+        "chapterNumber": { "type": "number", "description": "Chapter number" },
+        "title": { "type": "string", "description": "Title of the chapter" },
+        "content": { "type": "array", "items": { "type": "string" }, "description": "List of image URLs or text paragraphs" },
+        "publishDate": { "type": "string", "format": "date-time", "description": "When the chapter was published" },
+        "views": { "type": "integer", "description": "View count for this chapter" },
+        "teamId": { "type": "string", "description": "ID of the team that uploaded this" }
+      },
+      "required": ["seriesId", "chapterNumber", "publishDate"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Represents a user profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "username": { "type": "string", "description": "Display name" },
+        "email": { "type": "string", "description": "Email address" },
+        "bio": { "type": "string", "description": "User biography" },
+        "profilePicture": { "type": "string", "description": "URL to profile picture" },
+        "role": { "type": "string", "enum": ["user", "admin", "translator", "proofreader", "typesetter", "editor"], "description": "User role" },
+        "favorites": { "type": "array", "items": { "type": "string" }, "description": "List of favorite series IDs" },
+        "history": { "type": "array", "items": { "type": "object" }, "description": "Reading history with seriesId and lastChapter" },
+        "bookmarks": { "type": "array", "items": { "type": "string" }, "description": "List of bookmarked chapter IDs" },
+        "banned": { "type": "boolean", "description": "Whether the user is banned" }
+      },
+      "required": ["uid", "username", "role"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Represents a comment on a series or chapter.",
+      "type": "object",
+      "properties": {
+        "seriesId": { "type": "string", "description": "ID of the series" },
+        "chapterId": { "type": "string", "description": "ID of the chapter (optional for series-level comments)" },
+        "userId": { "type": "string", "description": "ID of the user who commented" },
+        "username": { "type": "string", "description": "Username at time of comment" },
+        "userAvatar": { "type": "string", "description": "Avatar at time of comment" },
+        "text": { "type": "string", "description": "Comment content" },
+        "likes": { "type": "integer", "description": "Number of likes" },
+        "parentId": { "type": "string", "description": "ID of parent comment if this is a reply" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the comment was made" }
+      },
+      "required": ["seriesId", "userId", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/series": { "schema": "Series", "description": "Collection of all series" },
+    "/series/{seriesId}/chapters": { "schema": "Chapter", "description": "Chapters for a specific series" },
+    "/users": { "schema": "User", "description": "User profiles" },
+    "/comments": { "schema": "Comment", "description": "All comments" },
+    "/notifications": { "schema": "object", "description": "User notifications" },
+    "/teams": { "schema": "object", "description": "Translation teams" },
+    "/pages": { "schema": "object", "description": "Static pages" },
+    "/analytics": { "schema": "object", "description": "Site analytics data" }
+  }
+}
