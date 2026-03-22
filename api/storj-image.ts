@@ -51,16 +51,9 @@ export default async function handler(req: any, res: any) {
     res.setHeader("Cache-Control", "public, max-age=31536000");
 
     if (response.Body) {
-      const stream = response.Body as any;
-      stream.pipe(res);
-      stream.on("error", (err: any) => {
-        console.error("Stream error:", err);
-        if (!res.headersSent) {
-          res.status(500).send("Error streaming image");
-        } else {
-          res.end();
-        }
-      });
+      const byteArray = await response.Body.transformToByteArray();
+      const buffer = Buffer.from(byteArray);
+      res.send(buffer);
     } else {
       res.status(404).send("Image not found");
     }
