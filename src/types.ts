@@ -9,6 +9,7 @@ export interface Series {
   title: string;
   description: string;
   coverImage: string;
+  backgroundImage?: string;
   status: SeriesStatus;
   type: SeriesType;
   genres: string[];

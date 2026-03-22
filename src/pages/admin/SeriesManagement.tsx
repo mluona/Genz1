@@ -39,6 +39,7 @@ export const SeriesManagement: React.FC = () => {
     title: '',
     description: '',
     coverImage: '',
+    backgroundImage: '',
     status: 'Ongoing' as SeriesStatus,
     type: 'Manga' as SeriesType,
     genres: [] as string[],
@@ -57,7 +58,7 @@ export const SeriesManagement: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: 'coverImage' | 'backgroundImage' = 'coverImage') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -65,7 +66,7 @@ export const SeriesManagement: React.FC = () => {
     setUploadProgress(0);
     
     try {
-      console.log(`Starting cover compression for: ${file.name}`, {
+      console.log(`Starting ${field} compression for: ${file.name}`, {
         size: (file.size / 1024).toFixed(2) + ' KB',
         type: file.type
       });
@@ -73,15 +74,15 @@ export const SeriesManagement: React.FC = () => {
       // Compress image to ensure it's under 1MB (0.9MB target)
       const base64Image = await compressImage(file, 0.9);
       
-      console.log(`Successfully compressed cover: ${file.name}`);
+      console.log(`Successfully compressed ${field}: ${file.name}`);
       
-      setFormData(prev => ({ ...prev, coverImage: base64Image }));
+      setFormData(prev => ({ ...prev, [field]: base64Image }));
       setUploadProgress(100);
       
       // Automatically save to database if editing an existing series
       if (editingSeries) {
         await updateDoc(doc(db, 'series', editingSeries.id), {
-          coverImage: base64Image,
+          [field]: base64Image,
           lastUpdated: Timestamp.now()
         });
       }
@@ -349,7 +350,7 @@ export const SeriesManagement: React.FC = () => {
       setIsSmartImporting(false);
       setSmartImportFile(null);
       setFormData({
-        title: '', description: '', coverImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
+        title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
       });
     }
   };
@@ -389,6 +390,7 @@ export const SeriesManagement: React.FC = () => {
         title: '',
         description: '',
         coverImage: '',
+        backgroundImage: '',
         status: 'Ongoing',
         type: 'Manga',
         genres: [],
@@ -458,7 +460,7 @@ export const SeriesManagement: React.FC = () => {
             onClick={() => { 
               setEditingSeries(null); 
               setFormData({
-                title: '', description: '', coverImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
+                title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
               });
               setIsSmartImportMode(false);
               setSmartImportFile(null);
@@ -472,7 +474,7 @@ export const SeriesManagement: React.FC = () => {
             onClick={() => { 
               setEditingSeries(null); 
               setFormData({
-                title: '', description: '', coverImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
+                title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
               });
               setIsSmartImportMode(true);
               setSmartImportFile(null);
@@ -523,7 +525,7 @@ export const SeriesManagement: React.FC = () => {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
                     <button 
-                      onClick={() => { setEditingSeries(series); setFormData(series); setIsModalOpen(true); }}
+                      onClick={() => { setEditingSeries(series); setFormData({ ...series, backgroundImage: series.backgroundImage || '' }); setIsModalOpen(true); }}
                       className="p-2 text-zinc-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                     >
                       <Edit2 className="w-4 h-4" />
@@ -653,7 +655,7 @@ export const SeriesManagement: React.FC = () => {
                             className="hidden" 
                             accept="image/*"
                             disabled={isUploading}
-                            onChange={handleFileUpload}
+                            onChange={(e) => handleFileUpload(e, 'coverImage')}
                           />
                         </label>
                       </div>
@@ -670,6 +672,39 @@ export const SeriesManagement: React.FC = () => {
                         <button 
                           type="button"
                           onClick={() => setFormData({...formData, coverImage: ''})}
+                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Background Image (Optional)</label>
+                    <div className="flex flex-col gap-4">
+                      <div className="flex gap-4">
+                        <div className="flex-1 bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-zinc-400 text-sm flex items-center truncate">
+                          {formData.backgroundImage ? 'Image uploaded' : 'No image uploaded'}
+                        </div>
+                        <label className="p-3 bg-zinc-100 rounded-2xl text-zinc-500 hover:bg-zinc-200 cursor-pointer transition-colors relative">
+                          {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*"
+                            disabled={isUploading}
+                            onChange={(e) => handleFileUpload(e, 'backgroundImage')}
+                          />
+                        </label>
+                      </div>
+                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Used for the series detail page header</p>
+                    </div>
+                    {formData.backgroundImage && (
+                      <div className="relative mt-4 w-full h-32 group">
+                        <img src={formData.backgroundImage || undefined} className="w-full h-full object-cover rounded-2xl border border-zinc-200 shadow-lg" alt="Preview" referrerPolicy="no-referrer" />
+                        <button 
+                          type="button"
+                          onClick={() => setFormData({...formData, backgroundImage: ''})}
                           className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X className="w-4 h-4" />

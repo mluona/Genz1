@@ -349,7 +349,8 @@ export const ChapterManagement: React.FC = () => {
               } else {
                 const batch = writeBatch(db);
                 for (const slice of compressedSlices) {
-                  const pageRef = doc(collection(db, 'series', selectedSeries.id, 'chapters', chapRef.id, 'pages'));
+                  const pageId = `page_${pageIndex.toString().padStart(4, '0')}`;
+                  const pageRef = doc(collection(db, 'series', selectedSeries.id, 'chapters', chapRef.id, 'pages'), pageId);
                   batch.set(pageRef, {
                     chapterId: chapRef.id,
                     pageNumber: pageIndex,

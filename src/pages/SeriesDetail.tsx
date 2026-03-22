@@ -118,15 +118,14 @@ export const SeriesDetail: React.FC = () => {
       
       {/* Immersive Header */}
       <div className="relative min-h-[60vh] lg:min-h-[70vh] flex flex-col justify-end overflow-hidden">
-        {/* Blurred Background Cover */}
+        {/* Background Cover */}
         <div className="absolute inset-0 z-0">
-          <img
-            src={series.coverImage || undefined}
-            alt=""
-            className="w-full h-full object-cover blur-3xl opacity-30 scale-110"
-            referrerPolicy="no-referrer"
+          <div 
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-30 blur-2xl scale-110"
+            style={{ backgroundImage: `url(${series.backgroundImage || series.coverImage})` }}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/20 via-zinc-950/60 to-zinc-950" />
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-zinc-950/20" />
+          <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-transparent to-transparent opacity-80" />
         </div>
 
         <div className="relative z-10 pt-32 pb-12 sm:pb-20">
@@ -172,25 +171,25 @@ export const SeriesDetail: React.FC = () => {
                   {series.title}
                 </h1>
 
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 md:gap-6 text-zinc-400 text-xs sm:text-sm font-medium">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 sm:gap-4 text-zinc-300 text-sm font-medium">
+                  <div className="flex items-center gap-2 bg-zinc-900/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
                     <User className="w-4 h-4 text-emerald-500" />
                     <span>{series.author}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-zinc-900/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
                     <Star className="w-4 h-4 text-emerald-500 fill-current" />
                     <span className="text-white font-bold">{series.rating.toFixed(1)}</span>
-                    <span className="text-[10px] sm:text-xs opacity-50">({series.ratingCount} reviews)</span>
+                    <span className="text-xs opacity-50">({series.ratingCount})</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 bg-zinc-900/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
                     <Calendar className="w-4 h-4 text-emerald-500" />
                     <span>{series.releaseYear}</span>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap justify-center md:justify-start gap-2 pt-2">
+                <div className="flex flex-wrap justify-center md:justify-start gap-2 pt-4">
                   {series.genres.map(genre => (
-                    <Link key={genre} to={`/search?genre=${genre}`} className="px-3 py-1.5 sm:px-4 sm:py-2 bg-zinc-900/50 border border-white/5 rounded-xl text-[10px] sm:text-xs font-semibold hover:bg-zinc-800 transition-colors cursor-pointer">
+                    <Link key={genre} to={`/search?genre=${genre}`} className="px-4 py-1.5 bg-zinc-800/80 backdrop-blur-md border border-white/10 rounded-full text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all cursor-pointer shadow-sm">
                       {genre}
                     </Link>
                   ))}

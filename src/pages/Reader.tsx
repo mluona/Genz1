@@ -11,16 +11,70 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Series, Chapter } from '../types';
 
 const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical', onLoaded }: { seriesId: string, chapterId: string, pageIndex: number, initialSrc: string, mode?: 'vertical' | 'horizontal' | 'preload', onLoaded?: () => void }) => {
-  const [src, setSrc] = useState<string>(initialSrc);
-  const [loading, setLoading] = useState(!initialSrc);
+  const needsProcessing = initialSrc && (initialSrc.startsWith('data:image/') || initialSrc.includes('gateway.storjshare.io'));
+  const [src, setSrc] = useState<string>(needsProcessing ? '' : initialSrc);
+  const [loading, setLoading] = useState(needsProcessing || !initialSrc);
   const [isVisible, setIsVisible] = useState(mode === 'preload' ? true : false); // Preload immediately
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let isMounted = true;
+    let blobUrl: string | null = null;
     if (initialSrc) {
-      setSrc(initialSrc);
-      setLoading(false);
-      return;
+      if (initialSrc.startsWith('data:image/')) {
+        let active = true;
+        fetch(initialSrc)
+          .then(res => res.blob())
+          .then(blob => {
+            if (active) {
+              blobUrl = URL.createObjectURL(blob);
+              setSrc(blobUrl);
+              setLoading(false);
+            }
+          })
+          .catch(() => {
+            if (active) {
+              setSrc(initialSrc);
+              setLoading(false);
+            }
+          });
+        return () => { 
+          active = false; 
+          if (blobUrl) URL.revokeObjectURL(blobUrl);
+        };
+      } else if (initialSrc.includes('gateway.storjshare.io')) {
+        let active = true;
+        fetch(`/api/storj-get-url?url=${encodeURIComponent(initialSrc)}`)
+          .then(async res => {
+            if (!res.ok) {
+              const text = await res.text();
+              console.error('Storj presign GET error:', res.status, text);
+              throw new Error(`HTTP error! status: ${res.status}`);
+            }
+            return res.json();
+          })
+          .then(data => {
+            if (active && data.url) {
+              setSrc(data.url);
+              setLoading(false);
+            } else if (active) {
+              console.error('Storj presign GET missing URL:', data);
+              setSrc(initialSrc);
+              setLoading(false);
+            }
+          })
+          .catch((err) => {
+            console.error('Storj presign GET fetch error:', err);
+            if (active) {
+              setSrc(initialSrc);
+              setLoading(false);
+            }
+          });
+        return () => { active = false; };
+      } else {
+        setSrc(initialSrc);
+        setLoading(false);
+      }
     }
 
     if (mode === 'preload') return; // Already visible
@@ -43,6 +97,7 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
     if (initialSrc || !isVisible) return;
 
     let isMounted = true;
+    let blobUrl: string | null = null;
     const fetchPage = async () => {
       try {
         const pageId = `page_${pageIndex.toString().padStart(4, '0')}`;
@@ -50,7 +105,40 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
         const pageSnap = await getDoc(pageRef);
         
         if (pageSnap.exists() && isMounted) {
-          setSrc(pageSnap.data().content);
+          const content = pageSnap.data().content;
+          if (content && content.startsWith('data:image/')) {
+            try {
+              const res = await fetch(content);
+              const blob = await res.blob();
+              if (isMounted) {
+                blobUrl = URL.createObjectURL(blob);
+                setSrc(blobUrl);
+              }
+            } catch (e) {
+              if (isMounted) setSrc(content);
+            }
+          } else if (content && content.includes('gateway.storjshare.io')) {
+            try {
+              const res = await fetch(`/api/storj-get-url?url=${encodeURIComponent(content)}`);
+              if (!res.ok) {
+                const text = await res.text();
+                console.error('Storj presign GET error (fetchPage):', res.status, text);
+                throw new Error(`HTTP error! status: ${res.status}`);
+              }
+              const data = await res.json();
+              if (data.url && isMounted) {
+                setSrc(data.url);
+              } else if (isMounted) {
+                console.error('Storj presign GET missing URL (fetchPage):', data);
+                setSrc(content);
+              }
+            } catch (e) {
+              console.error('Storj presign GET fetch error (fetchPage):', e);
+              if (isMounted) setSrc(content);
+            }
+          } else if (isMounted) {
+            setSrc(content);
+          }
         }
       } catch (error) {
         console.error("Failed to load page", pageIndex, error);
@@ -63,8 +151,17 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
     };
 
     fetchPage();
-    return () => { isMounted = false; };
+    return () => { 
+      isMounted = false; 
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
   }, [seriesId, chapterId, pageIndex, initialSrc, isVisible]);
+
+  useEffect(() => {
+    if (src) {
+      console.log(`Page ${pageIndex + 1} src:`, src.substring(0, 100) + (src.length > 100 ? '...' : ''));
+    }
+  }, [src, pageIndex]);
 
   if (mode === 'preload') {
     return src ? <img src={src} style={{ display: 'none' }} referrerPolicy="no-referrer" alt="preload next" /> : null;
@@ -79,6 +176,7 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
       )}
       {src && mode === 'horizontal' ? (
         <motion.img 
+          key={src}
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           src={src} 
@@ -87,9 +185,15 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
           loading="lazy"
           referrerPolicy="no-referrer"
           onLoad={onLoaded}
+          onError={(e) => {
+            console.error(`Failed to load image for page ${pageIndex + 1}:`, src.substring(0, 100));
+            e.currentTarget.style.display = 'none';
+            // Optional: show a fallback UI here
+          }}
         />
       ) : src ? (
         <motion.img 
+          key={src}
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
@@ -99,6 +203,10 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
           loading="lazy"
           referrerPolicy="no-referrer"
           onLoad={onLoaded}
+          onError={(e) => {
+            console.error(`Failed to load image for page ${pageIndex + 1}:`, src.substring(0, 100));
+            e.currentTarget.style.display = 'none';
+          }}
         />
       ) : null}
     </div>

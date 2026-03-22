@@ -107,6 +107,48 @@ const app = express();
       res.set('Cache-Control', 'public, max-age=31536000');
       res.send(response.data);
     } catch (error: any) {
+      if (error.response && [403, 503].includes(error.response.status)) {
+        console.log(`Axios failed with ${error.response.status} for ${url}, trying Puppeteer fallback...`);
+        try {
+          const browser = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+          });
+          const page = await browser.newPage();
+          
+          const headers: any = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Referer': (referer as string) || url,
+          };
+          await page.setExtraHTTPHeaders(headers);
+          
+          if (cookies && typeof cookies === 'string') {
+            try {
+              const urlObj = new URL(url);
+              const cookieArray = cookies.split(';').map(c => {
+                const [name, ...rest] = c.trim().split('=');
+                return { name, value: rest.join('='), domain: urlObj.hostname };
+              });
+              await page.setCookie(...cookieArray);
+            } catch (e) {
+              console.error("Failed to parse cookies for Puppeteer:", e);
+            }
+          }
+          
+          const viewSource = await page.goto(url, { waitUntil: 'networkidle0', timeout: 15000 });
+          if (!viewSource) throw new Error("No response from Puppeteer");
+          
+          const buffer = await viewSource.buffer();
+          const contentType = viewSource.headers()['content-type'] || 'image/jpeg';
+          await browser.close();
+          
+          res.set('Content-Type', contentType);
+          res.set('Cache-Control', 'public, max-age=31536000');
+          return res.send(buffer);
+        } catch (puppeteerError: any) {
+          console.error("Puppeteer fallback error:", puppeteerError.message);
+        }
+      }
       console.error("Proxy image error:", error.message);
       res.status(500).json({ error: "Failed to fetch image" });
     }
@@ -729,6 +771,61 @@ const app = express();
     } catch (error: any) {
       console.error("Storj Presign Error:", error.message);
       res.status(500).json({ error: "Failed to generate presigned URL" });
+    }
+  });
+
+  // Storj Presigned GET URL Endpoint
+  app.get("/api/storj-get-url", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: "URL is required" });
+      }
+
+      const accessKeyId = process.env.STORJ_ACCESS_KEY_ID;
+      const secretAccessKey = process.env.STORJ_SECRET_ACCESS_KEY;
+      const bucketName = process.env.STORJ_BUCKET_NAME;
+      const endpoint = process.env.STORJ_ENDPOINT;
+
+      if (!accessKeyId || !secretAccessKey || !bucketName || !endpoint) {
+        return res.status(500).json({ error: "Storj credentials not configured" });
+      }
+
+      const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+
+      const s3 = new S3Client({
+        region: "auto",
+        endpoint: endpoint,
+        credentials: {
+          accessKeyId,
+          secretAccessKey,
+        },
+      });
+
+      let key = url;
+      try {
+        const parsedUrl = new URL(url);
+        let pathname = parsedUrl.pathname;
+        if (pathname.startsWith(`/${bucketName}/`)) {
+          key = pathname.substring(bucketName.length + 2);
+        } else if (pathname.startsWith('/')) {
+          key = pathname.substring(1);
+        }
+      } catch (e) {
+        // Ignore parsing errors, use url as key
+      }
+
+      const command = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+      });
+
+      const signedUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+      res.json({ url: signedUrl });
+    } catch (error: any) {
+      console.error("Storj Get Presign Error:", error.message);
+      res.status(500).json({ error: "Failed to generate presigned GET URL" });
     }
   });
 
