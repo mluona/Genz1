@@ -47,6 +47,7 @@ export const ChapterManagement: React.FC = () => {
   const [totalFilesToUpload, setTotalFilesToUpload] = useState(0);
   const [completedFilesCount, setCompletedFilesCount] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingProgress, setSavingProgress] = useState({ current: 0, total: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,10 +127,11 @@ export const ChapterManagement: React.FC = () => {
     const placeholders = files.map(f => `uploading-${f.name}-${Date.now()}`);
     setFormData(prev => ({ ...prev, content: [...prev.content, ...placeholders] }));
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileId = placeholders[i];
-      
+    const CONCURRENCY_LIMIT = 3; // Limit concurrency for CPU-intensive compression
+    const tasks = files.map((file, i) => ({ file, fileId: placeholders[i], i }));
+
+    const runTask = async (task: { file: File, fileId: string, i: number }) => {
+      const { file, fileId, i } = task;
       try {
         console.log(`Starting compression for: ${file.name}`, {
           size: (file.size / 1024).toFixed(2) + ' KB',
@@ -167,7 +169,14 @@ export const ChapterManagement: React.FC = () => {
           content: prev.content.filter(item => item !== fileId)
         }));
       }
+    };
+
+    // Process in chunks
+    for (let i = 0; i < tasks.length; i += CONCURRENCY_LIMIT) {
+      const chunk = tasks.slice(i, i + CONCURRENCY_LIMIT);
+      await Promise.all(chunk.map(runTask));
     }
+
     setIsUploading(false);
     setTotalFilesToUpload(0);
     setCompletedFilesCount(0);
@@ -317,54 +326,72 @@ export const ChapterManagement: React.FC = () => {
         
         if (!isNovel && chData.images) {
           let useStorj = true;
-
-          let pageIndex = 0;
           const uploadedUrls: string[] = [];
 
-          for (let i = 0; i < chData.images.length; i++) {
-            const imgUrl = chData.images[i];
-            try {
-              const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imgUrl)}&referer=${encodeURIComponent(chData.url || urlImportInput)}&cookies=${encodeURIComponent(chData.cookies || data.cookies || sourceCookies)}`;
-              const imgResponse = await fetch(proxyUrl);
-              if (!imgResponse.ok) throw new Error(`Failed to fetch image: ${imgResponse.status}`);
-              
-              const blob = await imgResponse.blob();
-              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Compressing image ${i + 1}/${chData.images.length}...`]);
-              const compressedSlices = await splitAndCompressImage(blob);
-              
-              if (useStorj) {
-                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading image ${i + 1} to Storj...`]);
-                for (const slice of compressedSlices) {
-                  const filename = `${selectedSeries.id}/${chapRef.id}/page_${pageIndex}_${Date.now()}.jpg`;
-                  const url = await uploadToStorj(slice, filename);
-                  uploadedUrls.push(url);
-                  pageIndex++;
+          try {
+            const processImage = async (imgUrl: string, index: number) => {
+              try {
+                const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imgUrl)}&referer=${encodeURIComponent(chData.url || urlImportInput)}&cookies=${encodeURIComponent(chData.cookies || data.cookies || sourceCookies)}`;
+                const imgResponse = await fetch(proxyUrl);
+                if (!imgResponse.ok) throw new Error(`Failed to fetch image: ${imgResponse.status}`);
+                
+                const blob = await imgResponse.blob();
+                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Compressing image ${index + 1}/${chData.images.length}...`]);
+                const compressedSlices = await splitAndCompressImage(blob);
+                
+                if (useStorj) {
+                  setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading image ${index + 1} to Storj...`]);
+                  const sliceUrls = await Promise.all(compressedSlices.map(async (slice, sliceIndex) => {
+                    const filename = `${selectedSeries.id}/${chapRef.id}/page_${index}_slice_${sliceIndex}_${Date.now()}.jpg`;
+                    return await uploadToStorj(slice, filename);
+                  }));
+                  return { index, urls: sliceUrls };
+                } else {
+                  // Fallback to Firestore (handled outside this function if useStorj becomes false)
+                  throw new Error('Storj disabled');
                 }
-              } else {
-                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading image ${i + 1} to Firestore (Fallback)...`]);
-                const batch = writeBatch(db);
+              } catch (err: any) {
+                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error processing image ${index + 1}: ${err.message}`]);
+                throw err;
+              }
+            };
+
+            const CONCURRENCY_LIMIT = 3;
+            const results = [];
+            for (let i = 0; i < chData.images.length; i += CONCURRENCY_LIMIT) {
+              const chunk = chData.images.slice(i, i + CONCURRENCY_LIMIT);
+              const chunkResults = await Promise.all(chunk.map((url, j) => processImage(url, i + j)));
+              results.push(...chunkResults);
+            }
+
+            results.sort((a, b) => a.index - b.index);
+            const allUrls = results.flatMap(r => r.urls);
+            await updateDoc(chapRef, { content: allUrls, pageCount: allUrls.length });
+            
+          } catch (err: any) {
+            setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj upload failed for chapter, falling back to Firestore subcollection...`]);
+            useStorj = false;
+            
+            // Re-process for Firestore if needed (sequential for safety with batches)
+            let pageIndex = 0;
+            const batch = writeBatch(db);
+            for (let i = 0; i < chData.images.length; i++) {
+              const imgUrl = chData.images[i];
+              try {
+                const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imgUrl)}&referer=${encodeURIComponent(chData.url || urlImportInput)}&cookies=${encodeURIComponent(chData.cookies || data.cookies || sourceCookies)}`;
+                const imgResponse = await fetch(proxyUrl);
+                if (!imgResponse.ok) continue;
+                const blob = await imgResponse.blob();
+                const compressedSlices = await splitAndCompressImage(blob);
                 for (const slice of compressedSlices) {
                   const pageId = `page_${pageIndex.toString().padStart(4, '0')}`;
                   const pageRef = doc(collection(db, 'series', selectedSeries.id, 'chapters', chapRef.id, 'pages'), pageId);
-                  batch.set(pageRef, {
-                    chapterId: chapRef.id,
-                    pageNumber: pageIndex,
-                    content: slice
-                  });
+                  batch.set(pageRef, { chapterId: chapRef.id, pageNumber: pageIndex, content: slice });
                   pageIndex++;
                 }
-                await batch.commit();
-              }
-              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Processed image ${i + 1}/${chData.images.length}`]);
-            } catch (err: any) {
-              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error processing image ${i + 1}: ${err.message}`]);
-              if (useStorj) useStorj = false; // Fallback to Firestore if Storj upload fails mid-way
+              } catch (e) {}
             }
-          }
-          
-          if (useStorj && uploadedUrls.length > 0) {
-            await updateDoc(chapRef, { content: uploadedUrls, pageCount: uploadedUrls.length });
-          } else {
+            await batch.commit();
             await updateDoc(chapRef, { pageCount: pageIndex });
           }
         }
@@ -516,30 +543,44 @@ export const ChapterManagement: React.FC = () => {
           if (useStorj) {
             const uploadedUrls: string[] = [];
             let pageIndex = 0;
-            for (const path of paths) {
+            
+            // We'll process images in parallel, but maintain order
+            const processImage = async (path: string, index: number) => {
               const blob = await contents.files[path].async('blob');
               const file = new File([blob], path.split('/').pop()!, { type: blob.type });
               try {
-                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Processing ${file.name} (${pageIndex + 1})...`]);
+                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Processing ${file.name}...`]);
                 const base64Images = await splitAndCompressImage(file, 0.9);
-                for (const base64 of base64Images) {
-                  const filename = `${seriesId}/${chapterId}/page_${pageIndex}_${Date.now()}.jpg`;
-                  setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading slice to Storj...`]);
-                  const url = await uploadToStorj(base64, filename);
-                  uploadedUrls.push(url);
-                  pageIndex++;
-                }
+                
+                // Upload slices for this image
+                const sliceUrls = await Promise.all(base64Images.map(async (base64, sliceIndex) => {
+                  const filename = `${seriesId}/${chapterId}/page_${index}_slice_${sliceIndex}_${Date.now()}.jpg`;
+                  return await uploadToStorj(base64, filename);
+                }));
+                
+                return { index, urls: sliceUrls };
               } catch (err: any) {
-                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error uploading ${file.name} to Storj: ${err.message}`]);
-                useStorj = false;
-                break;
+                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error processing ${file.name}: ${err.message}`]);
+                throw err;
               }
-            }
-            
-            if (useStorj) {
+            };
+
+            try {
+              const CONCURRENCY_LIMIT = 3;
+              const results = [];
+              for (let i = 0; i < paths.length; i += CONCURRENCY_LIMIT) {
+                const chunk = paths.slice(i, i + CONCURRENCY_LIMIT);
+                const chunkResults = await Promise.all(chunk.map((path, j) => processImage(path, i + j)));
+                results.push(...chunkResults);
+              }
+              
+              // Sort results to maintain original order
+              results.sort((a, b) => a.index - b.index);
+              const allUrls = results.flatMap(r => r.urls);
+              
               await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
-                content: uploadedUrls,
-                pageCount: uploadedUrls.length
+                content: allUrls,
+                pageCount: allUrls.length
               });
               
               // Clean up old pages if any
@@ -559,6 +600,9 @@ export const ChapterManagement: React.FC = () => {
                 }
                 if (opCount > 0) await batch.commit();
               }
+            } catch (err: any) {
+              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj upload failed, falling back to Firestore: ${err.message}`]);
+              useStorj = false;
             }
           }
 
@@ -693,38 +737,48 @@ export const ChapterManagement: React.FC = () => {
       // Save pages to subcollection for non-novels
       if (chapterId && !isNovel) {
         let useStorj = true;
-
         let finalContent = [...formData.content];
 
         if (useStorj) {
-          const uploadedUrls: string[] = [];
-          for (let i = 0; i < formData.content.length; i++) {
-            const content = formData.content[i];
+          setSavingProgress({ current: 0, total: formData.content.length });
+          const uploadedUrls: string[] = new Array(formData.content.length);
+          
+          // Concurrency limit for uploads
+          const CONCURRENCY_LIMIT = 5;
+          const uploadTasks = formData.content.map((content, i) => ({ content, i }));
+          
+          const runUploadTask = async (task: { content: string, i: number }) => {
+            const { content, i } = task;
             if (content.startsWith('data:image')) {
               try {
-                // Generate a unique filename for Storj
                 const filename = `${selectedSeries.id}/${chapterId}/page_${i}_${Date.now()}.jpg`;
                 const url = await uploadToStorj(content, filename);
-                uploadedUrls.push(url);
+                uploadedUrls[i] = url;
               } catch (err) {
                 console.error(`Failed to upload page ${i} to Storj:`, err);
-                useStorj = false; // Fallback to Firestore if any upload fails
-                break;
+                throw err; // Re-throw to catch in the main try-catch
               }
             } else {
-              // Already a URL (e.g. from previous upload)
-              uploadedUrls.push(content);
+              uploadedUrls[i] = content;
             }
-          }
-          
-          if (useStorj) {
-            finalContent = uploadedUrls;
+            setSavingProgress(prev => ({ ...prev, current: prev.current + 1 }));
+          };
+
+          try {
+            // Process in chunks to limit concurrency
+            for (let i = 0; i < uploadTasks.length; i += CONCURRENCY_LIMIT) {
+              const chunk = uploadTasks.slice(i, i + CONCURRENCY_LIMIT);
+              await Promise.all(chunk.map(runUploadTask));
+            }
+            
+            finalContent = uploadedUrls.filter(Boolean);
+            
             // Update the chapter document with the Storj URLs
             await updateDoc(doc(db, `series/${selectedSeries.id}/chapters`, chapterId), {
               content: finalContent
             });
             
-            // Delete existing pages in the pages subcollection to clean up
+            // Clean up old pages in the pages subcollection to clean up
             const pagesRef = collection(db, `series/${selectedSeries.id}/chapters/${chapterId}/pages`);
             const existingPagesSnapshot = await getDocs(pagesRef);
             if (!existingPagesSnapshot.empty) {
@@ -743,6 +797,9 @@ export const ChapterManagement: React.FC = () => {
                 await batch.commit();
               }
             }
+          } catch (err) {
+            console.error("Storj parallel upload failed, falling back to Firestore:", err);
+            useStorj = false;
           }
         }
 
@@ -856,6 +913,7 @@ export const ChapterManagement: React.FC = () => {
     });
     setUploadProgress({});
     setFailedUploads([]);
+    setSavingProgress({ current: 0, total: 0 });
   };
 
   const handleDelete = (id: string) => {
@@ -1209,8 +1267,21 @@ export const ChapterManagement: React.FC = () => {
                       disabled={isSaving || isUploading}
                       className="w-full bg-black text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-zinc-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                     >
-                      {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                      {editingChapter ? 'Update Chapter' : 'Save & Close'}
+                      {isSaving ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Saving...</span>
+                          </div>
+                          {savingProgress.total > 0 && (
+                            <span className="text-[9px] font-bold text-zinc-400">
+                              Uploading to Cloud: {savingProgress.current} / {savingProgress.total}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <><Check className="w-4 h-4" /> {editingChapter ? 'Update Chapter' : 'Save & Close'}</>
+                      )}
                     </button>
                     {!editingChapter && (
                       <button 
@@ -1218,8 +1289,21 @@ export const ChapterManagement: React.FC = () => {
                         disabled={isSaving || isUploading}
                         className="w-full bg-emerald-500 text-black py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-400 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                       >
-                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                        Save & Continue
+                        {isSaving ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Saving...</span>
+                            </div>
+                            {savingProgress.total > 0 && (
+                              <span className="text-[9px] font-bold text-emerald-900/50">
+                                {savingProgress.current} / {savingProgress.total}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <><Plus className="w-4 h-4" /> Save & Continue</>
+                        )}
                       </button>
                     )}
                     <button 

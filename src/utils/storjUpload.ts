@@ -1,4 +1,9 @@
-export async function uploadToStorj(base64Data: string, filename: string, contentType: string = 'image/jpeg'): Promise<string | null> {
+export async function uploadToStorj(
+  base64Data: string, 
+  filename: string, 
+  contentType: string = 'image/jpeg',
+  onProgress?: (progress: number) => void
+): Promise<string | null> {
   try {
     // 1. Get presigned URL from our backend
     console.log(`[Storj] Getting presigned URL for ${filename}...`);
@@ -24,23 +29,38 @@ export async function uploadToStorj(base64Data: string, filename: string, conten
     const blob = await base64Response.blob();
     console.log(`[Storj] Blob size: ${blob.size} bytes`);
 
-    // 3. Upload directly to Storj using the presigned URL
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': contentType,
-      },
-      body: blob,
+    // 3. Upload directly to Storj using XMLHttpRequest for progress tracking
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', contentType);
+
+      if (onProgress) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = (event.loaded / event.total) * 100;
+            onProgress(percentComplete);
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          console.log(`[Storj] Upload successful: ${url}`);
+          resolve(url);
+        } else {
+          console.error(`[Storj] Upload error:`, xhr.status, xhr.statusText);
+          reject(new Error(`Failed to upload to Storj: ${xhr.statusText}`));
+        }
+      };
+
+      xhr.onerror = () => {
+        console.error(`[Storj] Network error during upload`);
+        reject(new Error('Network error during upload to Storj'));
+      };
+
+      xhr.send(blob);
     });
-
-    if (!uploadResponse.ok) {
-      console.error(`[Storj] Upload error:`, uploadResponse.status, uploadResponse.statusText);
-      throw new Error(`Failed to upload to Storj: ${uploadResponse.statusText}`);
-    }
-
-    console.log(`[Storj] Upload successful: ${url}`);
-    // 4. Return the public URL
-    return url;
   } catch (error) {
     console.error('Storj Upload Error:', error);
     throw error;
