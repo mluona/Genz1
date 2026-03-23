@@ -23,16 +23,20 @@ export const Navbar: React.FC = () => {
 
   const handleLogin = async () => {
     setLoginError(null);
+    console.log("Attempting Google login...");
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      console.log("Login successful:", result.user.email);
     } catch (error: any) {
-      console.error("Login failed:", error);
+      console.error("Login failed detailed error:", error);
       if (error.code === 'auth/popup-blocked') {
         setLoginError("Please allow popups for this site to login with Google.");
       } else if (error.code === 'auth/cancelled-popup-request') {
         // Ignore
+      } else if (error.code === 'auth/unauthorized-domain') {
+        setLoginError("This domain is not authorized for Firebase Auth. Please wait a moment for the configuration to propagate.");
       } else {
-        setLoginError("Login failed: " + error.message);
+        setLoginError(`Login failed (${error.code}): ${error.message}`);
       }
     }
   };
