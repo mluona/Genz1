@@ -41,7 +41,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: firebaseUser.email || '',
             bio: 'Reading is life.',
             profilePicture: firebaseUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
-            role: firebaseUser.email === 'aimenmluona12@gmail.com' ? 'admin' : 'user',
+            role: ((firebaseUser.email === 'aynmluona@gmail.com' || firebaseUser.email === 'genz-manga@gmail.com') && firebaseUser.emailVerified) ? 'admin' : 'user',
             favorites: [],
             history: [],
             bookmarks: [],
@@ -78,7 +78,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribeProfile();
   }, [user]);
 
-  const isAdmin = profile?.role === 'admin' || user?.email?.toLowerCase() === 'aimenmluona12@gmail.com';
+  const isAdmin = profile?.role === 'admin' || 
+    (user?.email?.toLowerCase() === 'aynmluona@gmail.com' && user?.emailVerified) || 
+    (user?.email?.toLowerCase() === 'genz-manga@gmail.com' && user?.emailVerified);
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, isAdmin }}>

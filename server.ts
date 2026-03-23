@@ -848,19 +848,11 @@ const app = express();
 
       const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
 
-      const s3 = new S3Client({
-        region: "auto",
-        endpoint: endpoint,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-        },
-      });
-
       let key = url;
       try {
         const parsedUrl = new URL(url);
         let pathname = parsedUrl.pathname;
+        // If the URL contains the bucket name, strip it to get the key
         if (pathname.startsWith(`/${bucketName}/`)) {
           key = pathname.substring(bucketName.length + 2);
         } else if (pathname.startsWith('/')) {
@@ -870,9 +862,21 @@ const app = express();
         // Ignore parsing errors, use url as key
       }
 
+      console.log(`Proxying Storj image: ${url} -> Key: ${key} (Bucket: ${bucketName})`);
+
       const command = new GetObjectCommand({
         Bucket: bucketName,
         Key: key,
+      });
+
+      const s3 = new S3Client({
+        region: "auto",
+        endpoint: endpoint,
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId,
+          secretAccessKey,
+        },
       });
 
       const response = await s3.send(command);

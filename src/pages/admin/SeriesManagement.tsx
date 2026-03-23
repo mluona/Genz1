@@ -14,6 +14,8 @@ const GENRES = [
   'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller'
 ];
 
+import { getProxiedImageUrl } from '../../utils/imageUtils';
+
 export const SeriesManagement: React.FC = () => {
   const [seriesList, setSeriesList] = useState<Series[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -504,7 +506,7 @@ export const SeriesManagement: React.FC = () => {
               <tr key={series.id} className="hover:bg-zinc-50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-4">
-                    <img src={series.coverImage || undefined} className="w-10 h-14 object-cover rounded-lg" alt="" referrerPolicy="no-referrer" />
+                    <img src={getProxiedImageUrl(series.coverImage)} className="w-10 h-14 object-cover rounded-lg" alt="" referrerPolicy="no-referrer" />
                     <div>
                       <p className="font-bold">{series.title}</p>
                       <p className="text-xs text-zinc-500">{series.author}</p>
@@ -668,7 +670,7 @@ export const SeriesManagement: React.FC = () => {
                     </div>
                     {formData.coverImage && (
                       <div className="relative mt-4 w-32 h-44 group">
-                        <img src={formData.coverImage || undefined} className="w-full h-full object-cover rounded-2xl border border-zinc-200 shadow-lg" alt="Preview" referrerPolicy="no-referrer" />
+                        <img src={getProxiedImageUrl(formData.coverImage)} className="w-full h-full object-cover rounded-2xl border border-zinc-200 shadow-lg" alt="Preview" referrerPolicy="no-referrer" />
                         <button 
                           type="button"
                           onClick={() => setFormData({...formData, coverImage: ''})}
@@ -701,7 +703,7 @@ export const SeriesManagement: React.FC = () => {
                     </div>
                     {formData.backgroundImage && (
                       <div className="relative mt-4 w-full h-32 group">
-                        <img src={formData.backgroundImage || undefined} className="w-full h-full object-cover rounded-2xl border border-zinc-200 shadow-lg" alt="Preview" referrerPolicy="no-referrer" />
+                        <img src={getProxiedImageUrl(formData.backgroundImage)} className="w-full h-full object-cover rounded-2xl border border-zinc-200 shadow-lg" alt="Preview" referrerPolicy="no-referrer" />
                         <button 
                           type="button"
                           onClick={() => setFormData({...formData, backgroundImage: ''})}

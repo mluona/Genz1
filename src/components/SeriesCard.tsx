@@ -4,6 +4,8 @@ import { Star, Eye, Clock } from 'lucide-react';
 import { Series } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 
+import { getProxiedImageUrl } from '../utils/imageUtils';
+
 interface Props {
   series: Series;
   compact?: boolean;
@@ -15,7 +17,7 @@ export const SeriesCard: React.FC<Props> = ({ series, compact = false }) => {
       <Link to={`/series/${series.slug}`} className="group flex gap-3 p-2 hover:bg-white/5 rounded-xl transition-colors">
         <div className="w-16 h-20 flex-shrink-0 relative overflow-hidden rounded-lg">
           <img
-            src={series.coverImage || undefined}
+            src={getProxiedImageUrl(series.coverImage)}
             alt={series.title}
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
             referrerPolicy="no-referrer"
@@ -36,7 +38,7 @@ export const SeriesCard: React.FC<Props> = ({ series, compact = false }) => {
     <Link to={`/series/${series.slug}`} className="group relative flex flex-col gap-3">
       <div className="aspect-[3/4] relative overflow-hidden rounded-2xl bg-zinc-900 border border-white/5">
         <img
-          src={series.coverImage || undefined}
+          src={getProxiedImageUrl(series.coverImage)}
           alt={series.title}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
           referrerPolicy="no-referrer"

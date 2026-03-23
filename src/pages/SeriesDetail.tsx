@@ -11,6 +11,8 @@ import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Series, Chapter } from '../types';
 
+import { getProxiedImageUrl } from '../utils/imageUtils';
+
 export const SeriesDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -141,7 +143,7 @@ export const SeriesDetail: React.FC = () => {
                 <div className="absolute -inset-1 bg-gradient-to-b from-emerald-500 to-blue-500 rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
                 <div className="relative w-40 sm:w-64 aspect-[2/3] rounded-[2rem] overflow-hidden shadow-2xl border border-white/10">
                   <img
-                    src={series.coverImage || undefined}
+                    src={getProxiedImageUrl(series.coverImage)}
                     alt={series.title}
                     className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700"
                     referrerPolicy="no-referrer"

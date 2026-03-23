@@ -9,6 +9,8 @@ import { TrendingUp, Clock, Star, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 
+import { getProxiedImageUrl } from '../utils/imageUtils';
+
 export const Home: React.FC = () => {
   const [recentlyUpdated, setRecentlyUpdated] = useState<Series[]>([]);
   const [dailyTop, setDailyTop] = useState<Series[]>([]);
@@ -94,7 +96,7 @@ export const Home: React.FC = () => {
                   className="inline-flex items-center gap-4 bg-zinc-900/80 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all group"
                 >
                   <img 
-                    src={series.coverImage || undefined} 
+                    src={getProxiedImageUrl(series.coverImage)} 
                     className="w-12 h-16 object-cover rounded-lg shadow-lg group-hover:scale-105 transition-transform" 
                     alt="" 
                     referrerPolicy="no-referrer"
@@ -120,7 +122,7 @@ export const Home: React.FC = () => {
                   className="inline-flex items-center gap-4 bg-zinc-900/80 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 hover:border-emerald-500/50 hover:shadow-[0_0_20px_rgba(16,185,129,0.2)] transition-all group"
                 >
                   <img 
-                    src={series.coverImage || undefined} 
+                    src={getProxiedImageUrl(series.coverImage)} 
                     className="w-12 h-16 object-cover rounded-lg shadow-lg group-hover:scale-105 transition-transform" 
                     alt="" 
                     referrerPolicy="no-referrer"

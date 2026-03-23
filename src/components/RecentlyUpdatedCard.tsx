@@ -6,6 +6,8 @@ import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
+import { getProxiedImageUrl } from '../utils/imageUtils';
+
 interface Props {
   series: Series;
 }
@@ -45,7 +47,7 @@ export const RecentlyUpdatedCard: React.FC<Props> = ({ series }) => {
       <Link to={`/series/${series.slug}`} className="group relative flex flex-col gap-3">
         <div className="aspect-[3/4] relative overflow-hidden rounded-2xl bg-zinc-900 border border-white/5">
           <img
-            src={series.coverImage || undefined}
+            src={getProxiedImageUrl(series.coverImage)}
             alt={series.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
             referrerPolicy="no-referrer"

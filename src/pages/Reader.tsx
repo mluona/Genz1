@@ -10,20 +10,23 @@ import { useTheme } from '../context/ThemeContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Series, Chapter } from '../types';
 
+import { getProxiedImageUrl } from '../utils/imageUtils';
+
 const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical', onLoaded }: { seriesId: string, chapterId: string, pageIndex: number, initialSrc: string, mode?: 'vertical' | 'horizontal' | 'preload', onLoaded?: () => void }) => {
-  const needsProcessing = initialSrc && initialSrc.startsWith('data:image/');
-  const [src, setSrc] = useState<string>(needsProcessing ? '' : initialSrc);
-  const [loading, setLoading] = useState(needsProcessing || !initialSrc);
+  const proxiedSrc = getProxiedImageUrl(initialSrc) || '';
+  const needsProcessing = proxiedSrc && proxiedSrc.startsWith('data:image/');
+  const [src, setSrc] = useState<string>(needsProcessing ? '' : proxiedSrc);
+  const [loading, setLoading] = useState(needsProcessing || !proxiedSrc);
   const [isVisible, setIsVisible] = useState(mode === 'preload' ? true : false); // Preload immediately
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let isMounted = true;
     let blobUrl: string | null = null;
-    if (initialSrc) {
-      if (initialSrc.startsWith('data:image/')) {
+    if (proxiedSrc) {
+      if (proxiedSrc.startsWith('data:image/')) {
         let active = true;
-        fetch(initialSrc)
+        fetch(proxiedSrc)
           .then(res => res.blob())
           .then(blob => {
             if (active) {
@@ -34,7 +37,7 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
           })
           .catch(() => {
             if (active) {
-              setSrc(initialSrc);
+              setSrc(proxiedSrc);
               setLoading(false);
             }
           });
@@ -43,7 +46,7 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
           if (blobUrl) URL.revokeObjectURL(blobUrl);
         };
       } else {
-        setSrc(initialSrc);
+        setSrc(proxiedSrc);
         setLoading(false);
       }
     }
@@ -77,19 +80,20 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
         
         if (pageSnap.exists() && isMounted) {
           const content = pageSnap.data().content;
-          if (content && content.startsWith('data:image/')) {
+          const proxiedContent = getProxiedImageUrl(content) || '';
+          if (proxiedContent && proxiedContent.startsWith('data:image/')) {
             try {
-              const res = await fetch(content);
+              const res = await fetch(proxiedContent);
               const blob = await res.blob();
               if (isMounted) {
                 blobUrl = URL.createObjectURL(blob);
                 setSrc(blobUrl);
               }
             } catch (e) {
-              if (isMounted) setSrc(content);
+              if (isMounted) setSrc(proxiedContent);
             }
           } else if (isMounted) {
-            setSrc(content);
+            setSrc(proxiedContent);
           }
         }
       } catch (error) {

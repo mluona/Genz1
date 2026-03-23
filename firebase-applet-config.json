@@ -1,9 +1,10 @@
 {
-  "apiKey": "AIzaSyAOVurf1eVFHvg3rHULTnreiMQe9oCNCWc",
-  "authDomain": "genz-manga.firebaseapp.com",
-  "projectId": "genz-manga",
-  "storageBucket": "genz-manga.firebasestorage.app",
-  "messagingSenderId": "136007693829",
-  "appId": "1:136007693829:web:1643fe8bd50ff74d4fce6c",
-  "measurementId": "G-C2L08XW0S2"
+  "projectId": "gen-lang-client-0007039089",
+  "appId": "1:746328306342:web:c00e6002c163bf77f0fa67",
+  "apiKey": "AIzaSyATp_kfGAyHgca-nAESigHsj0VAp3Srbx8",
+  "authDomain": "gen-lang-client-0007039089.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-f135fb87-fd1a-4d27-a130-b76a82cb7d8f",
+  "storageBucket": "gen-lang-client-0007039089.firebasestorage.app",
+  "messagingSenderId": "746328306342",
+  "measurementId": ""
 }

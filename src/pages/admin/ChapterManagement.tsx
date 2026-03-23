@@ -16,6 +16,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+import { getProxiedImageUrl } from '../../utils/imageUtils';
+
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -327,9 +329,11 @@ export const ChapterManagement: React.FC = () => {
               if (!imgResponse.ok) throw new Error(`Failed to fetch image: ${imgResponse.status}`);
               
               const blob = await imgResponse.blob();
+              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Compressing image ${i + 1}/${chData.images.length}...`]);
               const compressedSlices = await splitAndCompressImage(blob);
               
               if (useStorj) {
+                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading image ${i + 1} to Storj...`]);
                 for (const slice of compressedSlices) {
                   const filename = `${selectedSeries.id}/${chapRef.id}/page_${pageIndex}_${Date.now()}.jpg`;
                   const url = await uploadToStorj(slice, filename);
@@ -337,6 +341,7 @@ export const ChapterManagement: React.FC = () => {
                   pageIndex++;
                 }
               } else {
+                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading image ${i + 1} to Firestore (Fallback)...`]);
                 const batch = writeBatch(db);
                 for (const slice of compressedSlices) {
                   const pageId = `page_${pageIndex.toString().padStart(4, '0')}`;
@@ -515,9 +520,11 @@ export const ChapterManagement: React.FC = () => {
               const blob = await contents.files[path].async('blob');
               const file = new File([blob], path.split('/').pop()!, { type: blob.type });
               try {
+                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Processing ${file.name} (${pageIndex + 1})...`]);
                 const base64Images = await splitAndCompressImage(file, 0.9);
                 for (const base64 of base64Images) {
                   const filename = `${seriesId}/${chapterId}/page_${pageIndex}_${Date.now()}.jpg`;
+                  setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading slice to Storj...`]);
                   const url = await uploadToStorj(base64, filename);
                   uploadedUrls.push(url);
                   pageIndex++;
@@ -1424,7 +1431,7 @@ export const ChapterManagement: React.FC = () => {
                             className="group relative aspect-[3/4] bg-zinc-100 rounded-2xl border border-zinc-200 overflow-hidden shadow-sm hover:shadow-md transition-all"
                           >
                             {url && !url.startsWith('uploading-') ? (
-                              <img src={url} className="w-full h-full object-cover" alt={`Page ${index + 1}`} referrerPolicy="no-referrer" />
+                              <img src={getProxiedImageUrl(url)} className="w-full h-full object-cover" alt={`Page ${index + 1}`} referrerPolicy="no-referrer" />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-zinc-50">
                                 <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
