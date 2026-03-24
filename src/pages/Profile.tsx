@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { doc, updateDoc, getDocs, collection, query, where, documentId, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { handleFirestoreError, OperationType } from '../utils/firestore';
 import { signOut } from 'firebase/auth';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, Settings, Heart, History, Bookmark, LogOut, Edit2, Camera, ChevronRight, Coins, X } from 'lucide-react';
@@ -31,12 +32,14 @@ export const Profile: React.FC = () => {
       const fetchTransactionsAndPackages = async () => {
         try {
           const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-          const snapshot = await getDocs(q);
+          const snapshot = await getDocs(q)
+            .catch(e => { handleFirestoreError(e, OperationType.LIST, 'transactions'); throw e; });
           const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
           txs.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
           setTransactions(txs);
 
-          const packagesSnapshot = await getDocs(query(collection(db, 'coinPackages'), where('isActive', '==', true)));
+          const packagesSnapshot = await getDocs(query(collection(db, 'coinPackages'), where('isActive', '==', true)))
+            .catch(e => { handleFirestoreError(e, OperationType.LIST, 'coinPackages'); throw e; });
           const packages = packagesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CoinPackage));
           packages.sort((a, b) => a.coins - b.coins);
           setCoinPackages(packages);
@@ -80,7 +83,8 @@ export const Profile: React.FC = () => {
         for (let i = 0; i < idsArray.length; i += 10) {
           const chunk = idsArray.slice(i, i + 10);
           const q = query(collection(db, 'series'), where(documentId(), 'in', chunk));
-          const snapshot = await getDocs(q);
+          const snapshot = await getDocs(q)
+            .catch(e => { handleFirestoreError(e, OperationType.LIST, 'series'); throw e; });
           snapshot.docs.forEach(doc => {
             seriesMap.set(doc.id, { id: doc.id, ...doc.data() } as Series);
           });
@@ -116,7 +120,8 @@ export const Profile: React.FC = () => {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await updateDoc(doc(db, 'users', user.uid), formData);
+      await updateDoc(doc(db, 'users', user.uid), formData)
+        .catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
       setIsEditing(false);
     } catch (error) {
       console.error("Update failed:", error);
@@ -134,7 +139,7 @@ export const Profile: React.FC = () => {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         coins: (profile?.coins || 0) + amount
-      });
+      }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
 
       await addDoc(collection(db, 'transactions'), {
         userId: user.uid,
@@ -142,14 +147,15 @@ export const Profile: React.FC = () => {
         type: 'purchase',
         description: `Purchased ${amount} coins`,
         timestamp: serverTimestamp()
-      });
+      }).catch(e => handleFirestoreError(e, OperationType.CREATE, 'transactions'));
 
       alert(`Successfully purchased ${amount} coins!`);
       setSelectedPackage(null);
       // Refresh transactions if on wallet tab
       if (activeTab === 'wallet') {
         const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-        const snapshot = await getDocs(q);
+        const snapshot = await getDocs(q)
+          .catch(e => { handleFirestoreError(e, OperationType.LIST, 'transactions'); throw e; });
         const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
         txs.sort((a: any, b: any) => b.timestamp?.toMillis() - a.timestamp?.toMillis());
         setTransactions(txs);

@@ -82,7 +82,7 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
         imageUrl: imageUrl.trim() || null,
         reactions: {},
         isPinned: false
-      });
+      }).catch(e => handleFirestoreError(e, OperationType.CREATE, 'comments'));
       setNewComment('');
       setIsSpoiler(false);
       setImageUrl('');
@@ -112,7 +112,7 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
 
       await updateDoc(doc(db, 'comments', commentId), {
         reactions: newReactions
-      });
+      }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `comments/${commentId}`));
     } catch (error) {
       console.error("Error updating reaction:", error);
     }
@@ -123,7 +123,7 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
     try {
       await updateDoc(doc(db, 'comments', commentId), {
         isPinned: !isPinned
-      });
+      }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `comments/${commentId}`));
     } catch (error) {
       console.error("Error pinning comment:", error);
     }
@@ -133,7 +133,8 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
     if (!isAdmin) return;
     if (!window.confirm('Are you sure you want to delete this comment?')) return;
     try {
-      await deleteDoc(doc(db, 'comments', commentId));
+      await deleteDoc(doc(db, 'comments', commentId))
+        .catch(e => handleFirestoreError(e, OperationType.DELETE, `comments/${commentId}`));
     } catch (error) {
       console.error("Error deleting comment:", error);
     }

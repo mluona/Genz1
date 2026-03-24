@@ -43,10 +43,12 @@ export const SeriesDetail: React.FC = () => {
     }
     const userRef = doc(db, 'users', user.uid);
     if (isFavorite) {
-      await updateDoc(userRef, { favorites: arrayRemove(series.id) });
+      await updateDoc(userRef, { favorites: arrayRemove(series.id) })
+        .catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
       setIsFavorite(false);
     } else {
-      await updateDoc(userRef, { favorites: arrayUnion(series.id) });
+      await updateDoc(userRef, { favorites: arrayUnion(series.id) })
+        .catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
       setIsFavorite(true);
     }
   };

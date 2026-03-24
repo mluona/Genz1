@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { handleFirestoreError, OperationType } from '../utils/firestore';
 import { UserProfile } from '../types';
 
 interface AuthContextType {
@@ -32,7 +33,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (firebaseUser) {
         // Check if profile exists, if not create it
         const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef);
+        const userDoc = await getDoc(userDocRef)
+          .catch(e => { handleFirestoreError(e, OperationType.GET, `users/${firebaseUser.uid}`); throw e; });
         
         if (!userDoc.exists()) {
           const newProfile: UserProfile = {
@@ -47,7 +49,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             bookmarks: [],
             banned: false,
           };
-          await setDoc(userDocRef, newProfile);
+          await setDoc(userDocRef, newProfile)
+            .catch(e => handleFirestoreError(e, OperationType.CREATE, `users/${firebaseUser.uid}`));
           setProfile(newProfile);
         }
       } else {
@@ -71,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching profile:", error);
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
       setLoading(false);
     });
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Globe, Zap, Search, Plus, Trash2, Play, CheckCircle, AlertCircle, X, Edit2, RefreshCw } from 'lucide-react';
 import { collection, onSnapshot, addDoc, deleteDoc, doc, Timestamp, query, orderBy, updateDoc, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { handleFirestoreError, OperationType } from '../../utils/firestore';
 import axios from 'axios';
 import { splitAndCompressImage } from '../../utils/imageCompression';
 import { uploadToStorj } from '../../utils/storjUpload';
@@ -27,9 +28,7 @@ export const AutoImport: React.FC = () => {
     const q = query(collection(db, 'import_sources'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setSources(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => {
-      console.error("Firestore error in AutoImport:", error);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'import_sources'));
     return () => unsubscribe();
   }, []);
 
@@ -40,7 +39,7 @@ export const AutoImport: React.FC = () => {
         await updateDoc(doc(db, 'import_sources', editingSource.id), {
           ...newSource,
           lastUpdated: Timestamp.now(),
-        });
+        }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `import_sources/${editingSource.id}`));
       } else {
         await addDoc(collection(db, 'import_sources'), {
           ...newSource,
@@ -48,7 +47,7 @@ export const AutoImport: React.FC = () => {
           status: 'Active',
           lastSync: 'Never',
           createdAt: Timestamp.now(),
-        });
+        }).catch(error => handleFirestoreError(error, OperationType.CREATE, 'import_sources'));
       }
       setIsModalOpen(false);
       setEditingSource(null);
@@ -72,7 +71,8 @@ export const AutoImport: React.FC = () => {
 
   const handleDeleteSource = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'import_sources', id));
+      await deleteDoc(doc(db, 'import_sources', id))
+        .catch(error => handleFirestoreError(error, OperationType.DELETE, `import_sources/${id}`));
     } catch (error) {
       console.error("Error deleting source:", error);
     }
@@ -136,7 +136,10 @@ export const AutoImport: React.FC = () => {
       // 1. Check if series already exists
       const slug = seriesData.title.toLowerCase().trim().replace(/ /g, '-').replace(/[^\w-]+/g, '') || `series-${Date.now()}`;
       const existingQuery = query(collection(db, 'series'), where('slug', '==', slug));
-      const existingSnapshot = await getDocs(existingQuery);
+      const existingSnapshot = await getDocs(existingQuery)
+        .catch(error => handleFirestoreError(error, OperationType.GET, 'series'));
+      
+      if (!existingSnapshot) throw new Error("Failed to fetch series");
       
       let seriesId: string;
       let existingChapters: number[] = [];
@@ -157,12 +160,17 @@ export const AutoImport: React.FC = () => {
         
         // Update sourceUrl if missing
         if (!existingDoc.data().sourceUrl && seriesData.url) {
-          await updateDoc(doc(db, 'series', seriesId), { sourceUrl: seriesData.url });
+          await updateDoc(doc(db, 'series', seriesId), { sourceUrl: seriesData.url })
+            .catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}`));
         }
 
         // Get existing chapter numbers
-        const chaptersSnap = await getDocs(collection(db, 'series', seriesId, 'chapters'));
-        existingChapters = chaptersSnap.docs.map(d => d.data().chapterNumber);
+        const chaptersSnap = await getDocs(collection(db, 'series', seriesId, 'chapters'))
+          .catch(error => handleFirestoreError(error, OperationType.GET, `series/${seriesId}/chapters`));
+        
+        if (chaptersSnap) {
+          existingChapters = chaptersSnap.docs.map(d => d.data().chapterNumber);
+        }
       } else {
         setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Importing new series: ${seriesData.title}...`]);
         const seriesRef = await addDoc(collection(db, 'series'), {
@@ -180,7 +188,9 @@ export const AutoImport: React.FC = () => {
           slug,
           sourceUrl: seriesData.url || '',
           createdAt: Timestamp.now(),
-        });
+        }).catch(error => handleFirestoreError(error, OperationType.CREATE, 'series'));
+        
+        if (!seriesRef) throw new Error("Failed to create series");
         seriesId = seriesRef.id;
         setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Series created (ID: ${seriesId}).`]);
       }
@@ -227,7 +237,8 @@ export const AutoImport: React.FC = () => {
                 if (chData.cookies && chData.cookies !== currentCookies) {
                    currentCookies = chData.cookies;
                    if (source) {
-                     await updateDoc(doc(db, 'import_sources', source.id), { cookies: currentCookies });
+                     await updateDoc(doc(db, 'import_sources', source.id), { cookies: currentCookies })
+                       .catch(error => handleFirestoreError(error, OperationType.UPDATE, `import_sources/${source.id}`));
                      source.cookies = currentCookies; // update local object
                    }
                 }
@@ -241,8 +252,9 @@ export const AutoImport: React.FC = () => {
                     publishDate: Timestamp.now(),
                     views: 0,
                     pageCount: chData.images.length,
-                  });
+                  }).catch(error => handleFirestoreError(error, OperationType.CREATE, `series/${seriesId}/chapters`));
                   
+                  if (!chapRef) throw new Error("Failed to create chapter");
                   const chapterId = chapRef.id;
                   setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Downloading and processing ${chData.images.length} pages for ${chapter.title}...`]);
                   
@@ -291,7 +303,7 @@ export const AutoImport: React.FC = () => {
                           const approxBytes = base64.length;
                           if (opCount >= 450 || (batchSizeBytes + approxBytes) >= MAX_BATCH_BYTES) {
                             if (opCount > 0) {
-                              await batch.commit();
+                              await batch.commit().catch(error => handleFirestoreError(error, OperationType.WRITE, 'batch-set-pages'));
                               await new Promise(resolve => setTimeout(resolve, 500));
                             }
                             batch = writeBatch(db);
@@ -315,7 +327,7 @@ export const AutoImport: React.FC = () => {
                   }
                   
                   if (!useStorj && opCount > 0) {
-                    await batch.commit();
+                    await batch.commit().catch(error => handleFirestoreError(error, OperationType.WRITE, 'batch-set-pages'));
                     await new Promise(resolve => setTimeout(resolve, 500));
                   }
                   
@@ -324,12 +336,12 @@ export const AutoImport: React.FC = () => {
                     await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
                       content: uploadedUrls,
                       pageCount: uploadedUrls.length
-                    });
+                    }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}/chapters/${chapterId}`));
                   } else {
                     // Update page count for Firestore fallback
                     await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
                       pageCount: pageIndex
-                    });
+                    }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}/chapters/${chapterId}`));
                   }
 
                   setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Imported ${chapter.title} (${pageIndex} pages).`]);
@@ -350,7 +362,7 @@ export const AutoImport: React.FC = () => {
           // Update series lastUpdated
           await updateDoc(doc(db, 'series', seriesId), {
             lastUpdated: Timestamp.now()
-          });
+          }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}`));
         }
       }
 
@@ -399,7 +411,7 @@ export const AutoImport: React.FC = () => {
           // Update source lastSync
           await updateDoc(doc(db, 'import_sources', source.id), {
             lastSync: new Date().toLocaleString()
-          });
+          }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `import_sources/${source.id}`));
         } catch (error: any) {
           setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error syncing ${source.name}: ${error.message}`]);
         }
@@ -416,7 +428,11 @@ export const AutoImport: React.FC = () => {
     setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Starting library sync. Checking existing series for updates...`]);
     
     try {
-      const seriesSnap = await getDocs(collection(db, 'series'));
+      const seriesSnap = await getDocs(collection(db, 'series'))
+        .catch(error => handleFirestoreError(error, OperationType.GET, 'series'));
+      
+      if (!seriesSnap) throw new Error("Failed to fetch series list");
+      
       const seriesList = seriesSnap.docs.map(d => ({ id: d.id, ...d.data() }) as any).filter(s => s.sourceUrl);
       
       setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Found ${seriesList.length} series with source URLs.`]);
@@ -437,7 +453,8 @@ export const AutoImport: React.FC = () => {
           
           // Update source cookies if we got new ones
           if (fullData.cookies && source && fullData.cookies !== source.cookies) {
-             await updateDoc(doc(db, 'import_sources', source.id), { cookies: fullData.cookies });
+             await updateDoc(doc(db, 'import_sources', source.id), { cookies: fullData.cookies })
+               .catch(error => handleFirestoreError(error, OperationType.UPDATE, `import_sources/${source.id}`));
              source.cookies = fullData.cookies;
           }
           

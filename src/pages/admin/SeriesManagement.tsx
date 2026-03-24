@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp, setDoc, query, orderBy, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { handleFirestoreError, OperationType } from '../../utils/firestore';
 import { Series, SeriesType, SeriesStatus } from '../../types';
 import { Plus, Edit2, Trash2, Search, Filter, X, Upload, Loader2, FileArchive } from 'lucide-react';
 import { compressImage, splitAndCompressImage } from '../../utils/imageCompression';
@@ -56,7 +57,7 @@ export const SeriesManagement: React.FC = () => {
     const q = query(collection(db, 'series'), orderBy('lastUpdated', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setSeriesList(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Series)));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'series'));
     return () => unsubscribe();
   }, []);
 
@@ -86,7 +87,7 @@ export const SeriesManagement: React.FC = () => {
         await updateDoc(doc(db, 'series', editingSeries.id), {
           [field]: base64Image,
           lastUpdated: Timestamp.now()
-        });
+        }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${editingSeries.id}`));
       }
     } catch (error: any) {
       console.error("Upload failed:", error);
@@ -202,11 +203,13 @@ export const SeriesManagement: React.FC = () => {
       if (existingSeries) {
         seriesId = existingSeries.id;
         setSmartImportLog(prev => [...prev, { message: `Updating existing series: ${seriesName}`, type: 'success', timestamp: new Date().toLocaleTimeString() }]);
-        await updateDoc(doc(db, 'series', seriesId), seriesData);
+        await updateDoc(doc(db, 'series', seriesId), seriesData)
+          .catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}`));
       } else {
         setSmartImportLog(prev => [...prev, { message: `Creating new series: ${seriesName}`, type: 'info', timestamp: new Date().toLocaleTimeString() }]);
         seriesId = slug;
-        await setDoc(doc(db, 'series', seriesId), { ...seriesData, createdAt: Timestamp.now() });
+        await setDoc(doc(db, 'series', seriesId), { ...seriesData, createdAt: Timestamp.now() })
+          .catch(error => handleFirestoreError(error, OperationType.CREATE, `series/${seriesId}`));
       }
 
       // Process chapters
@@ -216,7 +219,11 @@ export const SeriesManagement: React.FC = () => {
         setSmartImportLog(prev => [...prev, { message: `Processing Chapter ${chapterNumber} (${paths.length} pages)...`, type: 'info', timestamp: new Date().toLocaleTimeString() }]);
         
         const chaptersQuery = query(collection(db, `series/${seriesId}/chapters`), orderBy('chapterNumber', 'desc'));
-        const chaptersSnapshot = await getDocs(chaptersQuery);
+        const chaptersSnapshot = await getDocs(chaptersQuery)
+          .catch(error => handleFirestoreError(error, OperationType.GET, `series/${seriesId}/chapters`));
+        
+        if (!chaptersSnapshot) throw new Error("Failed to fetch chapters");
+
         const existingChapter = chaptersSnapshot.docs.find(d => d.data().chapterNumber === chapterNumber);
         
         let chapterId = '';
@@ -232,7 +239,9 @@ export const SeriesManagement: React.FC = () => {
             publishDate: Timestamp.now(),
             views: 0,
             pageCount: paths.length,
-          });
+          }).catch(error => handleFirestoreError(error, OperationType.CREATE, `series/${seriesId}/chapters`));
+          
+          if (!chapRef) throw new Error("Failed to create chapter");
           chapterId = chapRef.id;
         }
 
@@ -241,21 +250,25 @@ export const SeriesManagement: React.FC = () => {
         const pagesRef = collection(db, `series/${seriesId}/chapters/${chapterId}/pages`);
         
         if (existingChapter) {
-          const existingPagesSnapshot = await getDocs(pagesRef);
+          const existingPagesSnapshot = await getDocs(pagesRef)
+            .catch(error => handleFirestoreError(error, OperationType.GET, `series/${seriesId}/chapters/${chapterId}/pages`));
+          
+          if (!existingPagesSnapshot) throw new Error("Failed to fetch existing pages");
+
           let batch = writeBatch(db);
           let opCount = 0;
           for (const doc of existingPagesSnapshot.docs) {
             batch.delete(doc.ref);
             opCount++;
             if (opCount >= 450) {
-              await batch.commit();
+              await batch.commit().catch(error => handleFirestoreError(error, OperationType.WRITE, 'batch-delete-pages'));
               await new Promise(resolve => setTimeout(resolve, 500));
               batch = writeBatch(db);
               opCount = 0;
             }
           }
           if (opCount > 0) {
-            await batch.commit();
+            await batch.commit().catch(error => handleFirestoreError(error, OperationType.WRITE, 'batch-delete-pages'));
             await new Promise(resolve => setTimeout(resolve, 500));
           }
         }
@@ -299,7 +312,7 @@ export const SeriesManagement: React.FC = () => {
                 
                 if (opCount >= 450 || (batchSizeBytes + approxBytes) >= MAX_BATCH_BYTES) {
                   if (opCount > 0) {
-                    await batch.commit();
+                    await batch.commit().catch(error => handleFirestoreError(error, OperationType.WRITE, 'batch-set-pages'));
                     await new Promise(resolve => setTimeout(resolve, 500)); // Delay to prevent overloading
                   }
                   batch = writeBatch(db);
@@ -322,7 +335,7 @@ export const SeriesManagement: React.FC = () => {
         }
         
         if (!useStorj && opCount > 0) {
-          await batch.commit();
+          await batch.commit().catch(error => handleFirestoreError(error, OperationType.WRITE, 'batch-set-pages'));
           await new Promise(resolve => setTimeout(resolve, 500));
         }
         
@@ -330,11 +343,11 @@ export const SeriesManagement: React.FC = () => {
           await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
             content: uploadedUrls,
             pageCount: uploadedUrls.length
-          });
+          }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}/chapters/${chapterId}`));
         } else {
           await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
             pageCount: pageIndex
-          });
+          }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}/chapters/${chapterId}`));
         }
         
         setSmartImportLog(prev => [...prev, { message: `Chapter ${chapterNumber} completed.`, type: 'success', timestamp: new Date().toLocaleTimeString() }]);
@@ -342,7 +355,7 @@ export const SeriesManagement: React.FC = () => {
       
       await updateDoc(doc(db, 'series', seriesId), {
         lastUpdated: Timestamp.now()
-      });
+      }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}`));
       
       setSmartImportLog(prev => [...prev, { message: `Smart Import completed successfully!`, type: 'success', timestamp: new Date().toLocaleTimeString() }]);
       
@@ -381,10 +394,12 @@ export const SeriesManagement: React.FC = () => {
 
     try {
       if (editingSeries) {
-        await updateDoc(doc(db, 'series', editingSeries.id), data);
+        await updateDoc(doc(db, 'series', editingSeries.id), data)
+          .catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${editingSeries.id}`));
       } else {
         // Use slug as document ID for easier retrieval
-        await setDoc(doc(db, 'series', slug), data);
+        await setDoc(doc(db, 'series', slug), data)
+          .catch(error => handleFirestoreError(error, OperationType.CREATE, `series/${slug}`));
       }
       setIsModalOpen(false);
       setEditingSeries(null);
@@ -416,7 +431,8 @@ export const SeriesManagement: React.FC = () => {
     if (seriesToDelete) {
       console.log("Attempting to delete series with ID:", seriesToDelete);
       try {
-        await deleteDoc(doc(db, 'series', seriesToDelete));
+        await deleteDoc(doc(db, 'series', seriesToDelete))
+          .catch(error => handleFirestoreError(error, OperationType.DELETE, `series/${seriesToDelete}`));
         console.log("Successfully deleted series:", seriesToDelete);
         setIsDeleteModalOpen(false);
         setSeriesToDelete(null);

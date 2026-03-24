@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, onSnapshot, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import { handleFirestoreError, OperationType } from '../utils/firestore';
 import { Series } from '../types';
 import { SeriesCard } from '../components/SeriesCard';
 import { BookOpen, Search, Filter } from 'lucide-react';
@@ -21,7 +22,7 @@ export const Novels: React.FC = () => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setNovels(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Series)));
       setLoading(false);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'series'));
     
     return () => unsubscribe();
   }, []);

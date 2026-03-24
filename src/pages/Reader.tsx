@@ -267,14 +267,18 @@ export const Reader: React.FC = () => {
     // Fetch series and chapters
     const fetchSeries = async () => {
       // Assuming slug is ID for now
-      const seriesDoc = await getDocs(query(collection(db, 'series'), where('slug', '==', slug)));
-      if (!seriesDoc.empty) {
+      const seriesDoc = await getDocs(query(collection(db, 'series'), where('slug', '==', slug)))
+        .catch(error => handleFirestoreError(error, OperationType.GET, 'series'));
+      
+      if (seriesDoc && !seriesDoc.empty) {
         const s = { id: seriesDoc.docs[0].id, ...seriesDoc.docs[0].data() } as Series;
         setSeries(s);
 
         const chaptersQuery = query(collection(db, `series/${s.id}/chapters`), where('chapterNumber', '==', Number(chapterNum)));
-        const chapterSnapshot = await getDocs(chaptersQuery);
-        if (!chapterSnapshot.empty) {
+        const chapterSnapshot = await getDocs(chaptersQuery)
+          .catch(error => handleFirestoreError(error, OperationType.GET, `series/${s.id}/chapters`));
+        
+        if (chapterSnapshot && !chapterSnapshot.empty) {
           const chapterData = { id: chapterSnapshot.docs[0].id, ...chapterSnapshot.docs[0].data() } as Chapter;
           
           // Check premium status
@@ -293,9 +297,13 @@ export const Reader: React.FC = () => {
           if (s.type !== 'Novel') {
             if (!chapterData.content || chapterData.content.length === 0) {
               const pagesRef = collection(db, `series/${s.id}/chapters/${chapterData.id}/pages`);
-              const snapshot = await getCountFromServer(pagesRef);
-              const count = snapshot.data().count;
-              chapterData.content = Array(count).fill('');
+              try {
+                const snapshot = await getCountFromServer(pagesRef);
+                const count = snapshot.data().count || 0;
+                chapterData.content = Array(count).fill('');
+              } catch (error) {
+                handleFirestoreError(error, OperationType.GET, `series/${s.id}/chapters/${chapterData.id}/pages`);
+              }
             }
           }
           
@@ -304,32 +312,41 @@ export const Reader: React.FC = () => {
           // Save to history
           if (user) {
             const userRef = doc(db, 'users', user.uid);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-              const userData = userSnap.data();
-              const currentHistory = userData.history || [];
-              const newHistory = currentHistory.filter((h: any) => h.seriesId !== s.id);
+            try {
+              const userSnap = await getDoc(userRef);
               
-              newHistory.push({
-                seriesId: s.id,
-                lastChapterId: chapterSnapshot.docs[0].id,
-                timestamp: Timestamp.now()
-              });
-              
-              if (newHistory.length > 50) {
-                newHistory.shift();
+              if (userSnap.exists()) {
+                const userData = userSnap.data();
+                const currentHistory = userData.history || [];
+                const newHistory = currentHistory.filter((h: any) => h.seriesId !== s.id);
+                
+                newHistory.push({
+                  seriesId: s.id,
+                  lastChapterId: chapterSnapshot.docs[0].id,
+                  timestamp: Timestamp.now()
+                });
+                
+                if (newHistory.length > 50) {
+                  newHistory.shift();
+                }
+                
+                await updateDoc(userRef, {
+                  history: newHistory
+                }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
               }
-              
-              await updateDoc(userRef, {
-                history: newHistory
-              });
+            } catch (error) {
+              handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
             }
           }
         }
 
         const allChaptersQuery = query(collection(db, `series/${s.id}/chapters`), orderBy('chapterNumber', 'asc'));
-        const allChaptersSnapshot = await getDocs(allChaptersQuery);
-        setChapters(allChaptersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Chapter)));
+        const allChaptersSnapshot = await getDocs(allChaptersQuery)
+          .catch(error => handleFirestoreError(error, OperationType.GET, `series/${s.id}/chapters`));
+        
+        if (allChaptersSnapshot) {
+          setChapters(allChaptersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Chapter)));
+        }
       }
       setLoading(false);
     };
@@ -347,10 +364,12 @@ export const Reader: React.FC = () => {
     if (!user || !chapter) return;
     const userRef = doc(db, 'users', user.uid);
     if (isBookmarked) {
-      await updateDoc(userRef, { bookmarks: arrayRemove(chapter.id) });
+      await updateDoc(userRef, { bookmarks: arrayRemove(chapter.id) })
+        .catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
       setIsBookmarked(false);
     } else {
-      await updateDoc(userRef, { bookmarks: arrayUnion(chapter.id) });
+      await updateDoc(userRef, { bookmarks: arrayUnion(chapter.id) })
+        .catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
       setIsBookmarked(true);
     }
   };
@@ -383,7 +402,7 @@ export const Reader: React.FC = () => {
       await updateDoc(userRef, {
         coins: userCoins - chapter.coinPrice,
         unlockedChapters: arrayUnion(chapter.id)
-      });
+      }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
 
       await addDoc(collection(db, 'transactions'), {
         userId: user.uid,
@@ -393,20 +412,28 @@ export const Reader: React.FC = () => {
         timestamp: Timestamp.now(),
         chapterId: chapter.id,
         seriesId: series?.id
-      });
+      }).catch(error => handleFirestoreError(error, OperationType.CREATE, 'transactions'));
 
       setIsPremiumLocked(false);
       
       // Fetch content after unlocking
       if (series?.type !== 'Novel') {
         const pagesRef = collection(db, `series/${series?.id}/chapters/${chapter.id}/pages`);
-        const snapshot = await getCountFromServer(pagesRef);
-        const count = snapshot.data().count;
-        setChapter({ ...chapter, content: Array(count).fill('') });
+        try {
+          const snapshot = await getCountFromServer(pagesRef);
+          const count = snapshot.data().count || 0;
+          setChapter({ ...chapter, content: Array(count).fill('') });
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, `series/${series?.id}/chapters/${chapter.id}/pages`);
+        }
       } else {
-        const chapterDoc = await getDoc(doc(db, `series/${series?.id}/chapters`, chapter.id));
-        if (chapterDoc.exists()) {
-          setChapter({ id: chapterDoc.id, ...chapterDoc.data() } as Chapter);
+        try {
+          const chapterDoc = await getDoc(doc(db, `series/${series?.id}/chapters`, chapter.id));
+          if (chapterDoc.exists()) {
+            setChapter({ id: chapterDoc.id, ...chapterDoc.data() } as Chapter);
+          }
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, `series/${series?.id}/chapters/${chapter.id}`);
         }
       }
       
@@ -430,7 +457,8 @@ export const Reader: React.FC = () => {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         coins: (profile.coins || 0) - amount
-      });
+      }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
+      
       await addDoc(collection(db, 'transactions'), {
         userId: user.uid,
         amount: -amount,
@@ -438,7 +466,8 @@ export const Reader: React.FC = () => {
         description: `Tipped creator for ${series?.title}`,
         timestamp: Timestamp.now(),
         seriesId: series?.id
-      });
+      }).catch(error => handleFirestoreError(error, OperationType.CREATE, 'transactions'));
+      
       showToast(`Thank you for supporting the creator with ${amount} coins!`);
     } catch (error) {
       console.error("Error tipping creator:", error);
