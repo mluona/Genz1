@@ -737,11 +737,11 @@ const app = express();
       const accessKeyId = process.env.STORJ_ACCESS_KEY_ID;
       const secretAccessKey = process.env.STORJ_SECRET_ACCESS_KEY;
       const bucketName = process.env.STORJ_BUCKET_NAME;
-      const endpoint = process.env.STORJ_ENDPOINT; // e.g. https://gateway.storjshare.io
-      const publicUrl = process.env.STORJ_PUBLIC_URL; // e.g. https://link.storjshare.io/s/xxxx/bucket
+      const endpoint = process.env.STORJ_ENDPOINT;
+      const publicUrl = process.env.STORJ_PUBLIC_URL;
 
       if (!accessKeyId || !secretAccessKey || !bucketName || !endpoint || !publicUrl) {
-        return res.status(500).json({ error: "Storj credentials not fully configured in environment variables" });
+        return res.status(500).json({ error: "Storj credentials not fully configured" });
       }
 
       const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
@@ -750,20 +750,11 @@ const app = express();
       const s3 = new S3Client({
         region: "auto",
         endpoint: endpoint,
-        credentials: {
-          accessKeyId,
-          secretAccessKey,
-        },
+        credentials: { accessKeyId, secretAccessKey },
       });
 
       const key = `manga/${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-
-      const command = new PutObjectCommand({
-        Bucket: bucketName,
-        Key: key,
-        ContentType: contentType,
-      });
-
+      const command = new PutObjectCommand({ Bucket: bucketName, Key: key, ContentType: contentType });
       const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
       const url = `${publicUrl.replace(/\/$/, '')}/${key}`;
 
@@ -771,6 +762,47 @@ const app = express();
     } catch (error: any) {
       console.error("Storj Presign Error:", error.message);
       res.status(500).json({ error: "Failed to generate presigned URL" });
+    }
+  });
+
+  app.post("/api/storj-presign-batch", async (req, res) => {
+    try {
+      const { files } = req.body; // Array of { filename, contentType }
+      if (!files || !Array.isArray(files)) {
+        return res.status(400).json({ error: "Files array is required" });
+      }
+
+      const accessKeyId = process.env.STORJ_ACCESS_KEY_ID;
+      const secretAccessKey = process.env.STORJ_SECRET_ACCESS_KEY;
+      const bucketName = process.env.STORJ_BUCKET_NAME;
+      const endpoint = process.env.STORJ_ENDPOINT;
+      const publicUrl = process.env.STORJ_PUBLIC_URL;
+
+      if (!accessKeyId || !secretAccessKey || !bucketName || !endpoint || !publicUrl) {
+        return res.status(500).json({ error: "Storj credentials not fully configured" });
+      }
+
+      const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
+      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+
+      const s3 = new S3Client({
+        region: "auto",
+        endpoint: endpoint,
+        credentials: { accessKeyId, secretAccessKey },
+      });
+
+      const results = await Promise.all(files.map(async (f: any) => {
+        const key = `manga/${Date.now()}-${f.filename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const command = new PutObjectCommand({ Bucket: bucketName, Key: key, ContentType: f.contentType });
+        const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+        const url = `${publicUrl.replace(/\/$/, '')}/${key}`;
+        return { uploadUrl, url, filename: f.filename };
+      }));
+
+      res.json({ results });
+    } catch (error: any) {
+      console.error("Storj Batch Presign Error:", error.message);
+      res.status(500).json({ error: "Failed to generate batch presigned URLs" });
     }
   });
 

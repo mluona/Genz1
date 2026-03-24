@@ -73,7 +73,7 @@ export const splitAndCompressImage = async (file: Blob, maxSizeMB: number = 0.9)
       const img = new Image();
       img.src = event.target?.result as string;
       img.onload = () => {
-        const MAX_HEIGHT = 2048; // Max height per slice to maintain quality
+        const MAX_HEIGHT = 4096; // Increased from 2048 to reduce number of slices
         const slices: string[] = [];
         
         let currentY = 0;

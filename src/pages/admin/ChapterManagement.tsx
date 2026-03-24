@@ -47,7 +47,7 @@ export const ChapterManagement: React.FC = () => {
   const [totalFilesToUpload, setTotalFilesToUpload] = useState(0);
   const [completedFilesCount, setCompletedFilesCount] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
-  const [savingProgress, setSavingProgress] = useState({ current: 0, total: 0 });
+  const [savingProgress, setSavingProgress] = useState({ current: 0, total: 0, status: '' });
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,7 +127,7 @@ export const ChapterManagement: React.FC = () => {
     const placeholders = files.map(f => `uploading-${f.name}-${Date.now()}`);
     setFormData(prev => ({ ...prev, content: [...prev.content, ...placeholders] }));
 
-    const CONCURRENCY_LIMIT = 3; // Limit concurrency for CPU-intensive compression
+    const CONCURRENCY_LIMIT = 6; // Increased from 3
     const tasks = files.map((file, i) => ({ file, fileId: placeholders[i], i }));
 
     const runTask = async (task: { file: File, fileId: string, i: number }) => {
@@ -356,7 +356,7 @@ export const ChapterManagement: React.FC = () => {
               }
             };
 
-            const CONCURRENCY_LIMIT = 3;
+            const CONCURRENCY_LIMIT = 6; // Increased from 3
             const results = [];
             for (let i = 0; i < chData.images.length; i += CONCURRENCY_LIMIT) {
               const chunk = chData.images.slice(i, i + CONCURRENCY_LIMIT);
@@ -566,7 +566,7 @@ export const ChapterManagement: React.FC = () => {
             };
 
             try {
-              const CONCURRENCY_LIMIT = 3;
+              const CONCURRENCY_LIMIT = 6; // Increased from 3
               const results = [];
               for (let i = 0; i < paths.length; i += CONCURRENCY_LIMIT) {
                 const chunk = paths.slice(i, i + CONCURRENCY_LIMIT);
@@ -740,23 +740,48 @@ export const ChapterManagement: React.FC = () => {
         let finalContent = [...formData.content];
 
         if (useStorj) {
-          setSavingProgress({ current: 0, total: formData.content.length });
+          setSavingProgress({ current: 0, total: formData.content.length, status: 'Initializing...' });
           const uploadedUrls: string[] = new Array(formData.content.length);
           
+          // 1. Batch presign all images
+          const imagesToPresign = formData.content
+            .map((content, i) => ({ content, i }))
+            .filter(item => item.content.startsWith('data:image'));
+          
+          let presignedData: any[] = [];
+          if (imagesToPresign.length > 0) {
+            setSavingProgress(prev => ({ ...prev, status: 'Presigning images...' }));
+            const presignResponse = await fetch('/api/storj-presign-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                files: imagesToPresign.map(item => ({
+                  filename: `${selectedSeries.id}/${chapterId}/page_${item.i}_${Date.now()}.jpg`,
+                  contentType: 'image/jpeg'
+                }))
+              })
+            });
+            if (presignResponse.ok) {
+              const { results } = await presignResponse.json();
+              presignedData = results;
+            }
+            setSavingProgress(prev => ({ ...prev, status: 'Uploading to Cloud...' }));
+          }
+
           // Concurrency limit for uploads
-          const CONCURRENCY_LIMIT = 5;
+          const CONCURRENCY_LIMIT = 15;
           const uploadTasks = formData.content.map((content, i) => ({ content, i }));
           
           const runUploadTask = async (task: { content: string, i: number }) => {
             const { content, i } = task;
             if (content.startsWith('data:image')) {
               try {
-                const filename = `${selectedSeries.id}/${chapterId}/page_${i}_${Date.now()}.jpg`;
-                const url = await uploadToStorj(content, filename);
+                const preFetched = presignedData.find(p => p.filename.includes(`page_${i}_`));
+                const url = await uploadToStorj(content, `page_${i}`, 'image/jpeg', undefined, preFetched);
                 uploadedUrls[i] = url;
               } catch (err) {
                 console.error(`Failed to upload page ${i} to Storj:`, err);
-                throw err; // Re-throw to catch in the main try-catch
+                throw err;
               }
             } else {
               uploadedUrls[i] = content;
@@ -913,7 +938,7 @@ export const ChapterManagement: React.FC = () => {
     });
     setUploadProgress({});
     setFailedUploads([]);
-    setSavingProgress({ current: 0, total: 0 });
+    setSavingProgress({ current: 0, total: 0, status: '' });
   };
 
   const handleDelete = (id: string) => {
@@ -1293,7 +1318,7 @@ export const ChapterManagement: React.FC = () => {
                           <div className="flex flex-col items-center gap-1">
                             <div className="flex items-center gap-2">
                               <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Saving...</span>
+                              <span>{savingProgress.status || 'Saving...'}</span>
                             </div>
                             {savingProgress.total > 0 && (
                               <span className="text-[9px] font-bold text-emerald-900/50">
