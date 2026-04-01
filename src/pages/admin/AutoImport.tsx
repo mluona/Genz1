@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Globe, Zap, Search, Plus, Trash2, Play, CheckCircle, AlertCircle, X, Edit2, RefreshCw } from 'lucide-react';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, Timestamp, query, orderBy, updateDoc, where, getDocs, writeBatch } from 'firebase/firestore';
-import { db } from '../../firebase';
-import { handleFirestoreError, OperationType } from '../../utils/firestore';
+import { supabase } from '../../supabase';
 import axios from 'axios';
 import { splitAndCompressImage } from '../../utils/imageCompression';
 import { uploadToStorj } from '../../utils/storjUpload';
@@ -24,37 +22,64 @@ export const AutoImport: React.FC = () => {
   });
   const [isTesting, setIsTesting] = useState<string | null>(null);
 
+  const fetchSources = async () => {
+    const { data, error } = await supabase
+      .from('import_sources')
+      .select('*')
+      .order('createdAt', { ascending: false });
+    
+    if (error) {
+      console.error("Error fetching sources:", error);
+      return;
+    }
+    setSources(data || []);
+  };
+
   useEffect(() => {
-    const q = query(collection(db, 'import_sources'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setSources(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'import_sources'));
-    return () => unsubscribe();
+    fetchSources();
+
+    const channel = supabase
+      .channel('import_sources_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'import_sources' }, () => {
+        fetchSources();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleAddSource = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingSource) {
-        await updateDoc(doc(db, 'import_sources', editingSource.id), {
-          ...newSource,
-          lastUpdated: Timestamp.now(),
-        }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `import_sources/${editingSource.id}`));
+        const { error } = await supabase
+          .from('import_sources')
+          .update({
+            ...newSource,
+            lastUpdated: new Date().toISOString(),
+          })
+          .eq('id', editingSource.id);
+        if (error) throw error;
       } else {
-        await addDoc(collection(db, 'import_sources'), {
-          ...newSource,
-          type: 'Website',
-          status: 'Active',
-          lastSync: 'Never',
-          createdAt: Timestamp.now(),
-        }).catch(error => handleFirestoreError(error, OperationType.CREATE, 'import_sources'));
+        const { error } = await supabase
+          .from('import_sources')
+          .insert({
+            ...newSource,
+            type: 'Website',
+            status: 'Active',
+            lastSync: 'Never',
+            createdAt: new Date().toISOString(),
+          });
+        if (error) throw error;
       }
       setIsModalOpen(false);
       setEditingSource(null);
       setNewSource({ name: '', url: '', cookies: '', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving source:", error);
-      alert("Failed to save source. Check permissions.");
+      alert("Failed to save source: " + error.message);
     }
   };
 
@@ -71,10 +96,14 @@ export const AutoImport: React.FC = () => {
 
   const handleDeleteSource = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'import_sources', id))
-        .catch(error => handleFirestoreError(error, OperationType.DELETE, `import_sources/${id}`));
-    } catch (error) {
+      const { error } = await supabase
+        .from('import_sources')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    } catch (error: any) {
       console.error("Error deleting source:", error);
+      alert("Failed to delete source: " + error.message);
     }
   };
 
@@ -135,11 +164,12 @@ export const AutoImport: React.FC = () => {
     try {
       // 1. Check if series already exists
       const slug = seriesData.title.toLowerCase().trim().replace(/ /g, '-').replace(/[^\w-]+/g, '') || `series-${Date.now()}`;
-      const existingQuery = query(collection(db, 'series'), where('slug', '==', slug));
-      const existingSnapshot = await getDocs(existingQuery)
-        .catch(error => handleFirestoreError(error, OperationType.GET, 'series'));
+      const { data: existingSeriesData, error: seriesFetchError } = await supabase
+        .from('series')
+        .select('*')
+        .eq('slug', slug);
       
-      if (!existingSnapshot) throw new Error("Failed to fetch series");
+      if (seriesFetchError) throw seriesFetchError;
       
       let seriesId: string;
       let existingChapters: number[] = [];
@@ -153,45 +183,55 @@ export const AutoImport: React.FC = () => {
         }
       });
 
-      if (!existingSnapshot.empty) {
-        const existingDoc = existingSnapshot.docs[0];
+      if (existingSeriesData && existingSeriesData.length > 0) {
+        const existingDoc = existingSeriesData[0];
         seriesId = existingDoc.id;
         setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Series "${seriesData.title}" already exists. Checking for new chapters...`]);
         
         // Update sourceUrl if missing
-        if (!existingDoc.data().sourceUrl && seriesData.url) {
-          await updateDoc(doc(db, 'series', seriesId), { sourceUrl: seriesData.url })
-            .catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}`));
+        if (!existingDoc.sourceUrl && seriesData.url) {
+          await supabase
+            .from('series')
+            .update({ sourceUrl: seriesData.url })
+            .eq('id', seriesId);
         }
 
         // Get existing chapter numbers
-        const chaptersSnap = await getDocs(collection(db, 'series', seriesId, 'chapters'))
-          .catch(error => handleFirestoreError(error, OperationType.GET, `series/${seriesId}/chapters`));
+        const { data: chaptersSnap, error: chaptersFetchError } = await supabase
+          .from('chapters')
+          .select('chapterNumber')
+          .eq('seriesId', seriesId);
+        
+        if (chaptersFetchError) throw chaptersFetchError;
         
         if (chaptersSnap) {
-          existingChapters = chaptersSnap.docs.map(d => d.data().chapterNumber);
+          existingChapters = chaptersSnap.map(d => d.chapterNumber);
         }
       } else {
         setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Importing new series: ${seriesData.title}...`]);
-        const seriesRef = await addDoc(collection(db, 'series'), {
-          title: seriesData.title,
-          description: seriesData.description || '',
-          coverImage: seriesData.coverImage || '',
-          type: 'Manga',
-          status: 'Ongoing',
-          genres: [],
-          tags: [],
-          views: 0,
-          rating: 5,
-          ratingCount: 1,
-          lastUpdated: Timestamp.now(),
-          slug,
-          sourceUrl: seriesData.url || '',
-          createdAt: Timestamp.now(),
-        }).catch(error => handleFirestoreError(error, OperationType.CREATE, 'series'));
+        const { data: newSeries, error: seriesCreateError } = await supabase
+          .from('series')
+          .insert({
+            title: seriesData.title,
+            description: seriesData.description || '',
+            coverImage: seriesData.coverImage || '',
+            type: 'Manga',
+            status: 'Ongoing',
+            genres: [],
+            tags: [],
+            views: 0,
+            rating: 5,
+            ratingCount: 1,
+            lastUpdated: new Date().toISOString(),
+            slug,
+            sourceUrl: seriesData.url || '',
+            createdAt: new Date().toISOString(),
+          })
+          .select()
+          .single();
         
-        if (!seriesRef) throw new Error("Failed to create series");
-        seriesId = seriesRef.id;
+        if (seriesCreateError || !newSeries) throw seriesCreateError || new Error("Failed to create series");
+        seriesId = newSeries.id;
         setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Series created (ID: ${seriesId}).`]);
       }
 
@@ -237,25 +277,31 @@ export const AutoImport: React.FC = () => {
                 if (chData.cookies && chData.cookies !== currentCookies) {
                    currentCookies = chData.cookies;
                    if (source) {
-                     await updateDoc(doc(db, 'import_sources', source.id), { cookies: currentCookies })
-                       .catch(error => handleFirestoreError(error, OperationType.UPDATE, `import_sources/${source.id}`));
+                     await supabase
+                       .from('import_sources')
+                       .update({ cookies: currentCookies })
+                       .eq('id', source.id);
                      source.cookies = currentCookies; // update local object
                    }
                 }
                 
                 if (chData.images && chData.images.length > 0) {
-                  const chapRef = await addDoc(collection(db, 'series', seriesId, 'chapters'), {
-                    seriesId: seriesId,
-                    chapterNumber: chapter.chapterNumber,
-                    title: chapter.title,
-                    content: [],
-                    publishDate: Timestamp.now(),
-                    views: 0,
-                    pageCount: chData.images.length,
-                  }).catch(error => handleFirestoreError(error, OperationType.CREATE, `series/${seriesId}/chapters`));
+                  const { data: newChapter, error: chapterCreateError } = await supabase
+                    .from('chapters')
+                    .insert({
+                      seriesId: seriesId,
+                      chapterNumber: chapter.chapterNumber,
+                      title: chapter.title,
+                      content: [],
+                      publishDate: new Date().toISOString(),
+                      views: 0,
+                      pageCount: chData.images.length,
+                    })
+                    .select()
+                    .single();
                   
-                  if (!chapRef) throw new Error("Failed to create chapter");
-                  const chapterId = chapRef.id;
+                  if (chapterCreateError || !newChapter) throw chapterCreateError || new Error("Failed to create chapter");
+                  const chapterId = newChapter.id;
                   setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Downloading and processing ${chData.images.length} pages for ${chapter.title}...`]);
                   
                   let pageIndex = 0;
@@ -263,11 +309,7 @@ export const AutoImport: React.FC = () => {
                   let useStorj = true;
                   
                   // Fallback variables if Storj is not configured
-                  const pagesRef = collection(db, `series/${seriesId}/chapters/${chapterId}/pages`);
-                  let batch = writeBatch(db);
-                  let opCount = 0;
-                  let batchSizeBytes = 0;
-                  const MAX_BATCH_BYTES = 8 * 1024 * 1024;
+                  const pagesToInsert = [];
                   
                   for (let i = 0; i < chData.images.length; i++) {
                     const imgUrl = chData.images[i];
@@ -284,14 +326,18 @@ export const AutoImport: React.FC = () => {
                       for (const base64 of base64Images) {
                         const pageId = `page_${pageIndex.toString().padStart(4, '0')}`;
                         
+                        // Extract mime type from base64 string
+                        const mimeTypeMatch = base64.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+                        const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
+                        
                         if (useStorj) {
                           try {
-                            const storjUrl = await uploadToStorj(base64, `${seriesId}/${chapterId}/${pageId}.jpg`);
+                            const storjUrl = await uploadToStorj(base64, `${seriesId}/${chapterId}/${pageId}.jpg`, mimeType);
                             if (storjUrl) uploadedUrls.push(storjUrl);
                           } catch (storjErr: any) {
                             if (storjErr.message.includes('credentials not fully configured')) {
                               useStorj = false;
-                              setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj not configured. Falling back to Firestore storage (Warning: may hit quota limits).`]);
+                              setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj not configured. Falling back to database storage (Warning: may hit quota limits).`]);
                             } else {
                               throw storjErr;
                             }
@@ -300,23 +346,11 @@ export const AutoImport: React.FC = () => {
                         
                         // If Storj is not used (fallback)
                         if (!useStorj) {
-                          const approxBytes = base64.length;
-                          if (opCount >= 450 || (batchSizeBytes + approxBytes) >= MAX_BATCH_BYTES) {
-                            if (opCount > 0) {
-                              await batch.commit().catch(error => handleFirestoreError(error, OperationType.WRITE, 'batch-set-pages'));
-                              await new Promise(resolve => setTimeout(resolve, 500));
-                            }
-                            batch = writeBatch(db);
-                            opCount = 0;
-                            batchSizeBytes = 0;
-                          }
-                          
-                          batch.set(doc(pagesRef, pageId), {
+                          pagesToInsert.push({
+                            chapterId: chapterId,
                             pageNumber: pageIndex,
                             content: base64
                           });
-                          opCount++;
-                          batchSizeBytes += approxBytes;
                         }
                         
                         pageIndex++;
@@ -326,22 +360,32 @@ export const AutoImport: React.FC = () => {
                     }
                   }
                   
-                  if (!useStorj && opCount > 0) {
-                    await batch.commit().catch(error => handleFirestoreError(error, OperationType.WRITE, 'batch-set-pages'));
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                  if (!useStorj && pagesToInsert.length > 0) {
+                    // Batch insert pages
+                    const BATCH_SIZE = 50;
+                    for (let i = 0; i < pagesToInsert.length; i += BATCH_SIZE) {
+                      const chunk = pagesToInsert.slice(i, i + BATCH_SIZE);
+                      await supabase.from('pages').insert(chunk);
+                    }
                   }
                   
                   // Update chapter with URLs if Storj was used
                   if (useStorj && uploadedUrls.length > 0) {
-                    await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
-                      content: uploadedUrls,
-                      pageCount: uploadedUrls.length
-                    }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}/chapters/${chapterId}`));
+                    await supabase
+                      .from('chapters')
+                      .update({
+                        content: uploadedUrls,
+                        pageCount: uploadedUrls.length
+                      })
+                      .eq('id', chapterId);
                   } else {
-                    // Update page count for Firestore fallback
-                    await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
-                      pageCount: pageIndex
-                    }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}/chapters/${chapterId}`));
+                    // Update page count for database fallback
+                    await supabase
+                      .from('chapters')
+                      .update({
+                        pageCount: pageIndex
+                      })
+                      .eq('id', chapterId);
                   }
 
                   setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Imported ${chapter.title} (${pageIndex} pages).`]);
@@ -360,9 +404,12 @@ export const AutoImport: React.FC = () => {
           }
           
           // Update series lastUpdated
-          await updateDoc(doc(db, 'series', seriesId), {
-            lastUpdated: Timestamp.now()
-          }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `series/${seriesId}`));
+          await supabase
+            .from('series')
+            .update({
+              lastUpdated: new Date().toISOString()
+            })
+            .eq('id', seriesId);
         }
       }
 
@@ -409,9 +456,12 @@ export const AutoImport: React.FC = () => {
           }
           
           // Update source lastSync
-          await updateDoc(doc(db, 'import_sources', source.id), {
-            lastSync: new Date().toLocaleString()
-          }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `import_sources/${source.id}`));
+          await supabase
+            .from('import_sources')
+            .update({
+              lastSync: new Date().toLocaleString()
+            })
+            .eq('id', source.id);
         } catch (error: any) {
           setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error syncing ${source.name}: ${error.message}`]);
         }
@@ -428,44 +478,48 @@ export const AutoImport: React.FC = () => {
     setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Starting library sync. Checking existing series for updates...`]);
     
     try {
-      const seriesSnap = await getDocs(collection(db, 'series'))
-        .catch(error => handleFirestoreError(error, OperationType.GET, 'series'));
+      const { data: seriesList, error: seriesFetchError } = await supabase
+        .from('series')
+        .select('*')
+        .not('sourceUrl', 'is', null);
       
-      if (!seriesSnap) throw new Error("Failed to fetch series list");
+      if (seriesFetchError) throw seriesFetchError;
       
-      const seriesList = seriesSnap.docs.map(d => ({ id: d.id, ...d.data() }) as any).filter(s => s.sourceUrl);
+      setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Found ${seriesList?.length || 0} series with source URLs.`]);
       
-      setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Found ${seriesList.length} series with source URLs.`]);
-      
-      for (const s of seriesList) {
-        setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Checking updates for: ${s.title}...`]);
-        const source = sources.find(src => {
+      if (seriesList) {
+        for (const s of seriesList) {
+          setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Checking updates for: ${s.title}...`]);
+          const source = sources.find(src => {
+            try {
+              return s.sourceUrl && src.url && s.sourceUrl.includes(new URL(src.url).hostname);
+            } catch (e) {
+              return false;
+            }
+          });
+          
           try {
-            return s.sourceUrl && src.url && s.sourceUrl.includes(new URL(src.url).hostname);
-          } catch (e) {
-            return false;
+            const response = await fetch(`/api/scrape/auto?url=${encodeURIComponent(s.sourceUrl)}&cookies=${encodeURIComponent(source?.cookies || '')}&userAgent=${encodeURIComponent(source?.userAgent || '')}`);
+            const fullData = await response.json();
+            
+            // Update source cookies if we got new ones
+            if (fullData.cookies && source && fullData.cookies !== source.cookies) {
+               await supabase
+                 .from('import_sources')
+                 .update({ cookies: fullData.cookies })
+                 .eq('id', source.id);
+               source.cookies = fullData.cookies;
+            }
+            
+            if (fullData && fullData.chapters) {
+              // Temporarily set isImporting to false so handleImportSeries can run, then back to true
+              setIsImporting(false);
+              await handleImportSeries(fullData);
+              setIsImporting(true);
+            }
+          } catch (err: any) {
+            setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error checking ${s.title}: ${err.message}`]);
           }
-        });
-        
-        try {
-          const response = await fetch(`/api/scrape/auto?url=${encodeURIComponent(s.sourceUrl)}&cookies=${encodeURIComponent(source?.cookies || '')}&userAgent=${encodeURIComponent(source?.userAgent || '')}`);
-          const fullData = await response.json();
-          
-          // Update source cookies if we got new ones
-          if (fullData.cookies && source && fullData.cookies !== source.cookies) {
-             await updateDoc(doc(db, 'import_sources', source.id), { cookies: fullData.cookies })
-               .catch(error => handleFirestoreError(error, OperationType.UPDATE, `import_sources/${source.id}`));
-             source.cookies = fullData.cookies;
-          }
-          
-          if (fullData && fullData.chapters) {
-            // Temporarily set isImporting to false so handleImportSeries can run, then back to true
-            setIsImporting(false);
-            await handleImportSeries(fullData);
-            setIsImporting(true);
-          }
-        } catch (err: any) {
-          setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error checking ${s.title}: ${err.message}`]);
         }
       }
       setImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Library sync complete.`]);

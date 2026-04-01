@@ -1,16 +1,15 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy, setDoc, getDocs, writeBatch, waitForPendingWrites, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 import { Series, Chapter } from '../../types';
 import { compressImage, splitAndCompressImage } from '../../utils/imageCompression';
 import { uploadToStorj } from '../../utils/storjUpload';
-import { handleFirestoreError, OperationType } from '../../utils/firestore';
 import { 
   Plus, Edit2, Trash2, X, Upload, Image as ImageIcon, 
   Layers, Loader2, FileArchive, AlertCircle, ArrowUp, 
   ArrowDown, Search, Filter, ChevronRight, Check, 
-  GripVertical, ExternalLink, RefreshCw, Type, Globe, Lock, Coins
+  GripVertical, ExternalLink, RefreshCw, Type, Globe, Lock, Coins,
+  CheckSquare, Square
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { motion, AnimatePresence } from 'motion/react';
@@ -53,6 +52,10 @@ export const ChapterManagement: React.FC = () => {
   const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
+  const [bulkUpdateData, setBulkUpdateData] = useState({ isPremium: false, coinPrice: 0 });
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [chapterToDelete, setChapterToDelete] = useState<string | null>(null);
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
@@ -76,17 +79,47 @@ export const ChapterManagement: React.FC = () => {
 
   // Fetch Sources
   useEffect(() => {
-    const q = query(collection(db, 'import_sources'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setSources(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'import_sources'));
-    return () => unsubscribe();
+    const fetchSources = async () => {
+      const { data, error } = await supabase
+        .from('import_sources')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      
+      if (error) {
+        console.error("Error fetching sources:", error);
+        return;
+      }
+      setSources(data || []);
+    };
+
+    fetchSources();
+
+    const channel = supabase
+      .channel('import_sources_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'import_sources' }, () => {
+        fetchSources();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Fetch Series
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'series'), (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Series));
+    const fetchSeries = async () => {
+      const { data, error } = await supabase
+        .from('series')
+        .select('*')
+        .order('title', { ascending: true });
+      
+      if (error) {
+        console.error("Error fetching series:", error);
+        return;
+      }
+      
+      const list = (data as Series[]) || [];
       setSeriesList(list);
       
       // Auto-select from URL or first available
@@ -95,8 +128,20 @@ export const ChapterManagement: React.FC = () => {
         const found = list.find(s => s.id === seriesId);
         if (found) setSelectedSeries(found);
       }
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'series'));
-    return () => unsubscribe();
+    };
+
+    fetchSeries();
+
+    const channel = supabase
+      .channel('series_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'series' }, () => {
+        fetchSeries();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [searchParams]);
 
   // Fetch Chapters
@@ -106,14 +151,92 @@ export const ChapterManagement: React.FC = () => {
       return;
     }
 
-    const q = query(collection(db, `series/${selectedSeries.id}/chapters`), orderBy('chapterNumber', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setChapters(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Chapter)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, `series/${selectedSeries.id}/chapters`));
-    return () => unsubscribe();
+    const fetchChapters = async () => {
+      const { data, error } = await supabase
+        .from('chapters')
+        .select('*')
+        .eq('seriesId', selectedSeries.id)
+        .order('chapterNumber', { ascending: false });
+      
+      if (error) {
+        console.error("Error fetching chapters:", error);
+        return;
+      }
+      setChapters((data as Chapter[]) || []);
+    };
+
+    fetchChapters();
+
+    const channel = supabase
+      .channel(`chapters_${selectedSeries.id}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'chapters',
+        filter: `seriesId=eq.${selectedSeries.id}`
+      }, () => {
+        fetchChapters();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [selectedSeries]);
 
-  // Common Upload Logic
+  const toggleChapterSelection = (id: string) => {
+    setSelectedChapters(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAllSelection = () => {
+    if (selectedChapters.length === chapters.length) {
+      setSelectedChapters([]);
+    } else {
+      setSelectedChapters(chapters.map(c => c.id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedChapters.length === 0) return;
+    try {
+      const { error } = await supabase
+        .from('chapters')
+        .delete()
+        .in('id', selectedChapters);
+      if (error) throw error;
+      
+      // Also delete pages
+      await supabase.from('pages').delete().in('chapterId', selectedChapters);
+      
+      setSuccess(`Successfully deleted ${selectedChapters.length} chapters.`);
+      setSelectedChapters([]);
+      setIsBulkDeleteModalOpen(false);
+    } catch (err: any) {
+      setError(`Bulk delete failed: ${err.message}`);
+    }
+  };
+
+  const handleBulkUpdate = async () => {
+    if (selectedChapters.length === 0) return;
+    try {
+      const { error } = await supabase
+        .from('chapters')
+        .update({
+          isPremium: bulkUpdateData.isPremium,
+          coinPrice: bulkUpdateData.coinPrice
+        })
+        .in('id', selectedChapters);
+      if (error) throw error;
+      
+      setSuccess(`Successfully updated ${selectedChapters.length} chapters.`);
+      setSelectedChapters([]);
+      setIsBulkUpdateModalOpen(false);
+    } catch (err: any) {
+      setError(`Bulk update failed: ${err.message}`);
+    }
+  };
   const uploadFiles = async (files: File[]) => {
     if (!selectedSeries) return;
     setIsUploading(true);
@@ -255,11 +378,13 @@ export const ChapterManagement: React.FC = () => {
         throw new Error(`Unsupported URL type: ${data.type}. Please provide a direct chapter or series URL.`);
       }
       
-      const existingChaptersSnap = await getDocs(collection(db, 'series', selectedSeries.id, 'chapters'))
-        .catch(e => handleFirestoreError(e, OperationType.GET, `series/${selectedSeries.id}/chapters`));
+      const { data: existingChaptersData, error: chaptersError } = await supabase
+        .from('chapters')
+        .select('chapterNumber')
+        .eq('seriesId', selectedSeries.id);
       
-      if (!existingChaptersSnap) return;
-      const existingChapters = existingChaptersSnap.docs.map(d => d.data().chapterNumber);
+      if (chaptersError) throw chaptersError;
+      const existingChapters = (existingChaptersData || []).map(d => d.chapterNumber);
       
       const missingChapters = chaptersToImport.filter(ch => {
         let chapterNumber = existingChapters.length > 0 ? Math.max(...existingChapters) + 1 : 1;
@@ -318,17 +443,24 @@ export const ChapterManagement: React.FC = () => {
         
         setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Importing Chapter ${chapterNumber}...`]);
         
-        const chapRef = await addDoc(collection(db, 'series', selectedSeries.id, 'chapters'), {
-          seriesId: selectedSeries.id,
-          title: chData.title || `Chapter ${chapterNumber}`,
-          chapterNumber,
-          content: isNovel ? [chData.content] : [],
-          pageCount: isNovel ? (chData.content.split(/\s+/).filter(Boolean).length || 0) : 0,
-          publishDate: Timestamp.now(),
-          views: 0
-        }).catch(e => handleFirestoreError(e, OperationType.CREATE, `series/${selectedSeries.id}/chapters`));
+        const { data: newChapter, error: insertError } = await supabase
+          .from('chapters')
+          .insert({
+            seriesId: selectedSeries.id,
+            title: chData.title || `Chapter ${chapterNumber}`,
+            chapterNumber,
+            content: isNovel ? [chData.content] : [],
+            pageCount: isNovel ? (chData.content.split(/\s+/).filter(Boolean).length || 0) : 0,
+            publishDate: new Date().toISOString(),
+            views: 0
+          })
+          .select()
+          .single();
         
-        if (!chapRef) continue;
+        if (insertError || !newChapter) {
+          console.error("Error creating chapter:", insertError);
+          continue;
+        }
         
         if (!isNovel && chData.images) {
           let useStorj = true;
@@ -348,12 +480,12 @@ export const ChapterManagement: React.FC = () => {
                 if (useStorj) {
                   setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading image ${index + 1} to Storj...`]);
                   const sliceUrls = await Promise.all(compressedSlices.map(async (slice, sliceIndex) => {
-                    const filename = `${selectedSeries.id}/${chapRef.id}/page_${index}_slice_${sliceIndex}_${Date.now()}.jpg`;
+                    const filename = `${selectedSeries.id}/${newChapter.id}/page_${index}_slice_${sliceIndex}_${Date.now()}.jpg`;
                     return await uploadToStorj(slice, filename);
                   }));
                   return { index, urls: sliceUrls };
                 } else {
-                  // Fallback to Firestore (handled outside this function if useStorj becomes false)
+                  // Fallback to database (handled outside this function if useStorj becomes false)
                   throw new Error('Storj disabled');
                 }
               } catch (err: any) {
@@ -362,7 +494,7 @@ export const ChapterManagement: React.FC = () => {
               }
             };
 
-            const CONCURRENCY_LIMIT = 6; // Increased from 3
+            const CONCURRENCY_LIMIT = 6;
             const results = [];
             for (let i = 0; i < chData.images.length; i += CONCURRENCY_LIMIT) {
               const chunk = chData.images.slice(i, i + CONCURRENCY_LIMIT);
@@ -372,16 +504,20 @@ export const ChapterManagement: React.FC = () => {
 
             results.sort((a, b) => a.index - b.index);
             const allUrls = results.flatMap(r => r.urls);
-            await updateDoc(chapRef, { content: allUrls, pageCount: allUrls.length })
-              .catch(e => handleFirestoreError(e, OperationType.UPDATE, `series/${selectedSeries.id}/chapters/${chapRef.id}`));
+            
+            await supabase
+              .from('chapters')
+              .update({ content: allUrls, pageCount: allUrls.length })
+              .eq('id', newChapter.id);
             
           } catch (err: any) {
-            setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj upload failed for chapter, falling back to Firestore subcollection...`]);
+            setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj upload failed for chapter, falling back to database subcollection...`]);
             useStorj = false;
             
-            // Re-process for Firestore if needed (sequential for safety with batches)
+            // Re-process for database if needed
             let pageIndex = 0;
-            const batch = writeBatch(db);
+            const pagesToInsert = [];
+            
             for (let i = 0; i < chData.images.length; i++) {
               const imgUrl = chData.images[i];
               try {
@@ -391,17 +527,24 @@ export const ChapterManagement: React.FC = () => {
                 const blob = await imgResponse.blob();
                 const compressedSlices = await splitAndCompressImage(blob);
                 for (const slice of compressedSlices) {
-                  const pageId = `page_${pageIndex.toString().padStart(4, '0')}`;
-                  const pageRef = doc(collection(db, 'series', selectedSeries.id, 'chapters', chapRef.id, 'pages'), pageId);
-                  batch.set(pageRef, { chapterId: chapRef.id, pageNumber: pageIndex, content: slice });
+                  pagesToInsert.push({
+                    chapterId: newChapter.id,
+                    pageNumber: pageIndex,
+                    content: slice
+                  });
                   pageIndex++;
                 }
               } catch (e) {}
             }
-            await batch.commit()
-              .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${selectedSeries.id}/chapters/${chapRef.id}/pages`));
-            await updateDoc(chapRef, { pageCount: pageIndex })
-              .catch(e => handleFirestoreError(e, OperationType.UPDATE, `series/${selectedSeries.id}/chapters/${chapRef.id}`));
+            
+            if (pagesToInsert.length > 0) {
+              await supabase.from('pages').insert(pagesToInsert);
+            }
+            
+            await supabase
+              .from('chapters')
+              .update({ pageCount: pageIndex })
+              .eq('id', newChapter.id);
           }
         }
         
@@ -499,24 +642,32 @@ export const ChapterManagement: React.FC = () => {
         } else {
           setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Creating new series: ${seriesName}`]);
           const slug = seriesName.toLowerCase().trim().replace(/ /g, '-',).replace(/[^\w-]+/g, '') || `series-${Date.now()}`;
-          const seriesRef = await addDoc(collection(db, 'series'), {
-            title: seriesName,
-            description: '',
-            coverImage: '',
-            type: 'Manga',
-            status: 'Ongoing',
-            genres: [],
-            tags: [],
-            views: 0,
-            rating: 5,
-            ratingCount: 1,
-            lastUpdated: Timestamp.now(),
-            slug,
-            createdAt: Timestamp.now(),
-          }).catch(e => handleFirestoreError(e, OperationType.CREATE, 'series'));
           
-          if (!seriesRef) continue;
-          seriesId = seriesRef.id;
+          const { data: newSeries, error: seriesError } = await supabase
+            .from('series')
+            .insert({
+              title: seriesName,
+              description: '',
+              coverImage: '',
+              type: 'Manga',
+              status: 'Ongoing',
+              genres: [],
+              tags: [],
+              views: 0,
+              rating: 5,
+              ratingCount: 1,
+              lastUpdated: new Date().toISOString(),
+              slug,
+              createdAt: new Date().toISOString(),
+            })
+            .select()
+            .single();
+          
+          if (seriesError || !newSeries) {
+            console.error("Error creating series:", seriesError);
+            continue;
+          }
+          seriesId = newSeries.id;
         }
 
         // Process chapters
@@ -525,30 +676,43 @@ export const ChapterManagement: React.FC = () => {
           setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Processing Chapter ${chapterNumber} (${paths.length} pages)...`]);
           
           // Check if chapter exists
-          const chaptersQuery = query(collection(db, `series/${seriesId}/chapters`), orderBy('chapterNumber', 'desc'));
-          const chaptersSnapshot = await getDocs(chaptersQuery)
-            .catch(e => handleFirestoreError(e, OperationType.GET, `series/${seriesId}/chapters`));
+          const { data: chaptersData, error: chaptersError } = await supabase
+            .from('chapters')
+            .select('*')
+            .eq('seriesId', seriesId)
+            .eq('chapterNumber', chapterNumber);
           
-          if (!chaptersSnapshot) continue;
-          const existingChapter = chaptersSnapshot.docs.find(d => d.data().chapterNumber === chapterNumber);
+          if (chaptersError) {
+            console.error("Error checking chapters:", chaptersError);
+            continue;
+          }
+          
+          const existingChapter = chaptersData && chaptersData.length > 0 ? chaptersData[0] : null;
           
           let chapterId = '';
           if (existingChapter) {
             chapterId = existingChapter.id;
             setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Updating existing Chapter ${chapterNumber}`]);
           } else {
-            const chapRef = await addDoc(collection(db, `series/${seriesId}/chapters`), {
-              seriesId: seriesId,
-              chapterNumber: chapterNumber,
-              title: `Chapter ${chapterNumber}`,
-              content: [],
-              publishDate: Timestamp.now(),
-              views: 0,
-              pageCount: paths.length,
-            }).catch(e => handleFirestoreError(e, OperationType.CREATE, `series/${seriesId}/chapters`));
+            const { data: newChapter, error: chapterError } = await supabase
+              .from('chapters')
+              .insert({
+                seriesId: seriesId,
+                chapterNumber: chapterNumber,
+                title: `Chapter ${chapterNumber}`,
+                content: [],
+                publishDate: new Date().toISOString(),
+                views: 0,
+                pageCount: paths.length,
+              })
+              .select()
+              .single();
             
-            if (!chapRef) continue;
-            chapterId = chapRef.id;
+            if (chapterError || !newChapter) {
+              console.error("Error creating chapter:", chapterError);
+              continue;
+            }
+            chapterId = newChapter.id;
           }
 
           // Extract and compress images
@@ -582,7 +746,7 @@ export const ChapterManagement: React.FC = () => {
             };
 
             try {
-              const CONCURRENCY_LIMIT = 6; // Increased from 3
+              const CONCURRENCY_LIMIT = 6;
               const results = [];
               for (let i = 0; i < paths.length; i += CONCURRENCY_LIMIT) {
                 const chunk = paths.slice(i, i + CONCURRENCY_LIMIT);
@@ -594,75 +758,33 @@ export const ChapterManagement: React.FC = () => {
               results.sort((a, b) => a.index - b.index);
               const allUrls = results.flatMap(r => r.urls);
               
-              await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
-                content: allUrls,
-                pageCount: allUrls.length
-              }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `series/${seriesId}/chapters/${chapterId}`));
+              await supabase
+                .from('chapters')
+                .update({
+                  content: allUrls,
+                  pageCount: allUrls.length
+                })
+                .eq('id', chapterId);
               
               // Clean up old pages if any
-              const pagesRef = collection(db, `series/${seriesId}/chapters/${chapterId}/pages`);
-              const existingPagesSnapshot = await getDocs(pagesRef)
-                .catch(e => handleFirestoreError(e, OperationType.GET, `series/${seriesId}/chapters/${chapterId}/pages`));
+              await supabase.from('pages').delete().eq('chapterId', chapterId);
               
-              if (existingPagesSnapshot && !existingPagesSnapshot.empty) {
-                let batch = writeBatch(db);
-                let opCount = 0;
-                for (const d of existingPagesSnapshot.docs) {
-                  batch.delete(d.ref);
-                  opCount++;
-                  if (opCount >= 450) {
-                    await batch.commit()
-                      .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${seriesId}/chapters/${chapterId}/pages`));
-                    batch = writeBatch(db);
-                    opCount = 0;
-                  }
-                }
-                if (opCount > 0) {
-                  await batch.commit()
-                    .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${seriesId}/chapters/${chapterId}/pages`));
-                }
-              }
             } catch (err: any) {
-              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj upload failed, falling back to Firestore: ${err.message}`]);
+              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj upload failed, falling back to database: ${err.message}`]);
               useStorj = false;
             }
           }
 
           if (!useStorj) {
-            const pagesRef = collection(db, `series/${seriesId}/chapters/${chapterId}/pages`);
-            
             // Delete existing pages if updating
             if (existingChapter) {
-              const existingPagesSnapshot = await getDocs(pagesRef)
-                .catch(e => handleFirestoreError(e, OperationType.GET, `series/${seriesId}/chapters/${chapterId}/pages`));
-              
-              if (existingPagesSnapshot) {
-                let batch = writeBatch(db);
-              let opCount = 0;
-              for (const doc of existingPagesSnapshot.docs) {
-                batch.delete(doc.ref);
-                opCount++;
-                if (opCount >= 450) {
-                  await batch.commit()
-                    .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${seriesId}/chapters/${chapterId}/pages`));
-                  batch = writeBatch(db);
-                  opCount = 0;
-                }
-              }
-              if (opCount > 0) {
-                await batch.commit()
-                  .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${seriesId}/chapters/${chapterId}/pages`));
-              }
+              await supabase.from('pages').delete().eq('chapterId', chapterId);
             }
-          }
 
-          // Upload new pages
-          let batch = writeBatch(db);
-            let opCount = 0;
-            let batchSizeBytes = 0;
-            const MAX_BATCH_BYTES = 8 * 1024 * 1024;
-            
+            // Upload new pages
             let pageIndex = 0;
+            const pagesToInsert = [];
+            
             for (const path of paths) {
               const blob = await contents.files[path].async('blob');
               const file = new File([blob], path.split('/').pop()!, { type: blob.type });
@@ -671,27 +793,11 @@ export const ChapterManagement: React.FC = () => {
                 const base64Images = await splitAndCompressImage(file, 0.9);
                 
                 for (const base64 of base64Images) {
-                  const pageId = `page_${pageIndex.toString().padStart(4, '0')}`;
-                  const approxBytes = base64.length;
-                  
-                  if (opCount >= 450 || (batchSizeBytes + approxBytes) >= MAX_BATCH_BYTES) {
-                    await batch.commit()
-                      .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${seriesId}/chapters/${chapterId}/pages`));
-                    try {
-                      await waitForPendingWrites(db);
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                    } catch (e) {}
-                    batch = writeBatch(db);
-                    opCount = 0;
-                    batchSizeBytes = 0;
-                  }
-                  
-                  batch.set(doc(pagesRef, pageId), {
+                  pagesToInsert.push({
+                    chapterId: chapterId,
                     pageNumber: pageIndex,
                     content: base64
                   });
-                  opCount++;
-                  batchSizeBytes += approxBytes;
                   pageIndex++;
                 }
               } catch (err: any) {
@@ -699,28 +805,30 @@ export const ChapterManagement: React.FC = () => {
               }
             }
             
-            if (opCount > 0) {
-              await batch.commit()
-                .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${seriesId}/chapters/${chapterId}/pages`));
-              try {
-                await waitForPendingWrites(db);
-                await new Promise(resolve => setTimeout(resolve, 500));
-              } catch (e) {}
+            if (pagesToInsert.length > 0) {
+              // Batch insert pages
+              const BATCH_SIZE = 100;
+              for (let i = 0; i < pagesToInsert.length; i += BATCH_SIZE) {
+                const chunk = pagesToInsert.slice(i, i + BATCH_SIZE);
+                await supabase.from('pages').insert(chunk);
+              }
             }
             
             // Update page count
-            await updateDoc(doc(db, `series/${seriesId}/chapters`, chapterId), {
-              pageCount: pageIndex
-            }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `series/${seriesId}/chapters/${chapterId}`));
+            await supabase
+              .from('chapters')
+              .update({ pageCount: pageIndex })
+              .eq('id', chapterId);
           }
           
           setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Chapter ${chapterNumber} completed.`]);
         }
-        
+
         // Update series lastUpdated
-        await updateDoc(doc(db, 'series', seriesId), {
-          lastUpdated: Timestamp.now()
-        }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `series/${seriesId}`));
+        await supabase
+          .from('series')
+          .update({ lastUpdated: new Date().toISOString() })
+          .eq('id', seriesId);
       }
       
       setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Smart Import completed successfully!`]);
@@ -747,7 +855,7 @@ export const ChapterManagement: React.FC = () => {
       chapterNumber: parseFloat(formData.chapterNumber.toString()),
       title: formData.title,
       seriesId: selectedSeries.id,
-      publishDate: Timestamp.fromDate(publishDate),
+      publishDate: publishDate.toISOString(),
       views: editingChapter?.views || 0,
       content: isNovel ? formData.content : [], // Store empty array for non-novels in the main doc
       pageCount: isNovel ? (formData.content[0]?.split(/\s+/).filter(Boolean).length || 0) : formData.content.length,
@@ -759,17 +867,26 @@ export const ChapterManagement: React.FC = () => {
       let chapterId = editingChapter?.id;
       
       if (editingChapter) {
-        await updateDoc(doc(db, `series/${selectedSeries.id}/chapters`, editingChapter.id), chapterData)
-          .catch(e => handleFirestoreError(e, OperationType.UPDATE, `series/${selectedSeries.id}/chapters/${editingChapter.id}`));
+        const { error: updateError } = await supabase
+          .from('chapters')
+          .update(chapterData)
+          .eq('id', editingChapter.id);
+        
+        if (updateError) throw updateError;
       } else {
-        try {
-          const docRef = await addDoc(collection(db, `series/${selectedSeries.id}/chapters`), chapterData);
-          chapterId = docRef.id;
-        } catch (e) {
-          handleFirestoreError(e, OperationType.CREATE, `series/${selectedSeries.id}/chapters`);
-        }
-        await updateDoc(doc(db, 'series', selectedSeries.id), { lastUpdated: Timestamp.now() })
-          .catch(e => handleFirestoreError(e, OperationType.UPDATE, `series/${selectedSeries.id}`));
+        const { data: newChapter, error: insertError } = await supabase
+          .from('chapters')
+          .insert(chapterData)
+          .select()
+          .single();
+        
+        if (insertError || !newChapter) throw insertError || new Error("Failed to create chapter");
+        chapterId = newChapter.id;
+        
+        await supabase
+          .from('series')
+          .update({ lastUpdated: new Date().toISOString() })
+          .eq('id', selectedSeries.id);
       }
       
       // Save pages to subcollection for non-novels
@@ -793,10 +910,14 @@ export const ChapterManagement: React.FC = () => {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                files: imagesToPresign.map(item => ({
-                  filename: `${selectedSeries.id}/${chapterId}/page_${item.i}_${Date.now()}.jpg`,
-                  contentType: 'image/jpeg'
-                }))
+                files: imagesToPresign.map(item => {
+                  const mimeType = item.content.match(/data:(.*?);/)?.[1] || 'image/jpeg';
+                  const ext = mimeType.split('/')[1] || 'jpg';
+                  return {
+                    filename: `${selectedSeries.id}/${chapterId}/page_${item.i}_${Date.now()}.${ext}`,
+                    contentType: mimeType
+                  };
+                })
               })
             });
             if (presignResponse.ok) {
@@ -815,7 +936,8 @@ export const ChapterManagement: React.FC = () => {
             if (content.startsWith('data:image')) {
               try {
                 const preFetched = presignedData.find(p => p.filename.includes(`page_${i}_`));
-                const url = await uploadToStorj(content, `page_${i}`, 'image/jpeg', undefined, preFetched);
+                const mimeType = content.match(/data:(.*?);/)?.[1] || 'image/jpeg';
+                const url = await uploadToStorj(content, `page_${i}`, mimeType, undefined, preFetched);
                 uploadedUrls[i] = url;
               } catch (err) {
                 console.error(`Failed to upload page ${i} to Storj:`, err);
@@ -837,107 +959,40 @@ export const ChapterManagement: React.FC = () => {
             finalContent = uploadedUrls.filter(Boolean);
             
             // Update the chapter document with the Storj URLs
-            await updateDoc(doc(db, `series/${selectedSeries.id}/chapters`, chapterId), {
-              content: finalContent
-            }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `series/${selectedSeries.id}/chapters/${chapterId}`));
+            await supabase
+              .from('chapters')
+              .update({ content: finalContent })
+              .eq('id', chapterId);
             
             // Clean up old pages in the pages subcollection to clean up
-            const pagesRef = collection(db, `series/${selectedSeries.id}/chapters/${chapterId}/pages`);
-            const existingPagesSnapshot = await getDocs(pagesRef)
-              .catch(e => handleFirestoreError(e, OperationType.GET, `series/${selectedSeries.id}/chapters/${chapterId}/pages`));
+            await supabase.from('pages').delete().eq('chapterId', chapterId);
             
-            if (existingPagesSnapshot && !existingPagesSnapshot.empty) {
-              let batch = writeBatch(db);
-              let opCount = 0;
-              for (const d of existingPagesSnapshot.docs) {
-                batch.delete(d.ref);
-                opCount++;
-                if (opCount >= 450) {
-                  await batch.commit()
-                    .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${selectedSeries.id}/chapters/${chapterId}/pages`));
-                  batch = writeBatch(db);
-                  opCount = 0;
-                }
-              }
-              if (opCount > 0) {
-                await batch.commit()
-                  .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${selectedSeries.id}/chapters/${chapterId}/pages`));
-              }
-            }
           } catch (err) {
-            console.error("Storj parallel upload failed, falling back to Firestore:", err);
+            console.error("Storj parallel upload failed, falling back to database:", err);
             useStorj = false;
           }
         }
 
         if (!useStorj) {
-          // Fallback to Firestore subcollection
-          const pagesRef = collection(db, `series/${selectedSeries.id}/chapters/${chapterId}/pages`);
+          // Fallback to database subcollection
+          // First, delete existing pages
+          await supabase.from('pages').delete().eq('chapterId', chapterId);
           
-          // First, let's get existing pages to delete any extras
-          const existingPagesSnapshot = await getDocs(pagesRef)
-            .catch(e => handleFirestoreError(e, OperationType.GET, `series/${selectedSeries.id}/chapters/${chapterId}/pages`));
-          
-          const existingPageIds = existingPagesSnapshot ? existingPagesSnapshot.docs.map(d => d.id) : [];
-          
-          // Save new pages and delete extra pages in batches (max 500 ops or 8MB per batch)
-          const newPageIds = new Set<string>();
-          let batch = writeBatch(db);
-          let opCount = 0;
-          let batchSizeBytes = 0;
-          const MAX_BATCH_BYTES = 8 * 1024 * 1024; // 8MB to be safe and prevent stream exhaustion
-          
-          const commitBatchIfNeeded = async (addedBytes = 0) => {
-            if (opCount >= 450 || (batchSizeBytes + addedBytes) >= MAX_BATCH_BYTES) {
-              await batch.commit()
-                .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${selectedSeries.id}/chapters/${chapterId}/pages`));
-              try {
-                await waitForPendingWrites(db);
-                await new Promise(resolve => setTimeout(resolve, 500)); // Give client time to breathe
-              } catch (e) {
-                console.warn("waitForPendingWrites failed or timed out", e);
-              }
-              batch = writeBatch(db);
-              opCount = 0;
-              batchSizeBytes = 0;
-            }
-            batchSizeBytes += addedBytes;
-          };
-
+          const pagesToInsert = [];
           for (let i = 0; i < formData.content.length; i++) {
-            const pageId = `page_${i.toString().padStart(4, '0')}`;
-            newPageIds.add(pageId);
-            
-            const content = formData.content[i];
-            // Approximate size of the document (base64 string length + some overhead)
-            const approxBytes = content ? content.length : 100;
-            
-            await commitBatchIfNeeded(approxBytes);
-            
-            batch.set(doc(pagesRef, pageId), {
+            pagesToInsert.push({
+              chapterId: chapterId,
               pageNumber: i,
-              content: content
+              content: formData.content[i]
             });
-            opCount++;
           }
           
-          // Delete extra pages
-          for (const oldId of existingPageIds) {
-            if (!newPageIds.has(oldId)) {
-              await commitBatchIfNeeded(100); // Small overhead for delete
-              batch.delete(doc(pagesRef, oldId));
-              opCount++;
-            }
-          }
-          
-          if (opCount > 0) {
-            await batch.commit()
-              .catch(e => handleFirestoreError(e, OperationType.WRITE, `series/${selectedSeries.id}/chapters/${chapterId}/pages`));
-            try {
-              await waitForPendingWrites(db);
-              await new Promise(resolve => setTimeout(resolve, 500));
-            } catch (e) {
-              console.warn("waitForPendingWrites failed or timed out", e);
+          if (pagesToInsert.length > 0) {
+            // Batch insert pages
+            const BATCH_SIZE = 100;
+            for (let i = 0; i < pagesToInsert.length; i += BATCH_SIZE) {
+              const chunk = pagesToInsert.slice(i, i + BATCH_SIZE);
+              await supabase.from('pages').insert(chunk);
             }
           }
         }
@@ -998,47 +1053,16 @@ export const ChapterManagement: React.FC = () => {
     try {
       // If it's not a novel, delete the pages subcollection first
       if (selectedSeries.type !== 'Novel') {
-        const pagesRef = collection(db, `series/${selectedSeries.id}/chapters/${chapterToDelete}/pages`);
-        const pagesSnapshot = await getDocs(pagesRef)
-          .catch(e => handleFirestoreError(e, OperationType.GET, `series/${selectedSeries.id}/chapters/${chapterToDelete}/pages`));
-        
-        if (pagesSnapshot && !pagesSnapshot.empty) {
-          let batch = writeBatch(db);
-          let opCount = 0;
-          
-          for (const doc of pagesSnapshot.docs) {
-            batch.delete(doc.ref);
-            opCount++;
-            if (opCount >= 450) {
-              await batch.commit()
-                .catch(e => handleFirestoreError(e, OperationType.DELETE, `series/${selectedSeries.id}/chapters/${chapterToDelete}/pages`));
-              try {
-                await waitForPendingWrites(db);
-                await new Promise(resolve => setTimeout(resolve, 500));
-              } catch (e) {
-                console.warn("waitForPendingWrites failed or timed out", e);
-              }
-              batch = writeBatch(db);
-              opCount = 0;
-            }
-          }
-          
-          if (opCount > 0) {
-            await batch.commit()
-              .catch(e => handleFirestoreError(e, OperationType.DELETE, `series/${selectedSeries.id}/chapters/${chapterToDelete}/pages`));
-            try {
-              await waitForPendingWrites(db);
-              await new Promise(resolve => setTimeout(resolve, 500));
-            } catch (e) {
-              console.warn("waitForPendingWrites failed or timed out", e);
-            }
-          }
-        }
+        await supabase.from('pages').delete().eq('chapterId', chapterToDelete);
       }
       
       // Delete the main chapter document
-      await deleteDoc(doc(db, `series/${selectedSeries.id}/chapters`, chapterToDelete))
-        .catch(e => handleFirestoreError(e, OperationType.DELETE, `series/${selectedSeries.id}/chapters/${chapterToDelete}`));
+      const { error } = await supabase
+        .from('chapters')
+        .delete()
+        .eq('id', chapterToDelete);
+      
+      if (error) throw error;
       setSuccess("Chapter deleted.");
     } catch (err: any) {
       setError(err.message);
@@ -1053,13 +1077,16 @@ export const ChapterManagement: React.FC = () => {
     if (chapter) {
       let content = chapter.content || [];
       if (selectedSeries?.type !== 'Novel') {
-        const pagesRef = collection(db, `series/${selectedSeries.id}/chapters/${chapter.id}/pages`);
-        const pagesQuery = query(pagesRef, orderBy('pageNumber', 'asc'));
-        const pagesSnapshot = await getDocs(pagesQuery)
-          .catch(e => handleFirestoreError(e, OperationType.GET, `series/${selectedSeries.id}/chapters/${chapter.id}/pages`));
+        const { data: pagesData, error } = await supabase
+          .from('pages')
+          .select('content')
+          .eq('chapterId', chapter.id)
+          .order('pageNumber', { ascending: true });
         
-        if (pagesSnapshot && !pagesSnapshot.empty) {
-          content = pagesSnapshot.docs.map(d => d.data().content);
+        if (error) {
+          console.error("Error fetching pages:", error);
+        } else if (pagesData && pagesData.length > 0) {
+          content = pagesData.map(p => p.content);
         }
       }
       
@@ -1068,7 +1095,7 @@ export const ChapterManagement: React.FC = () => {
         chapterNumber: chapter.chapterNumber,
         title: chapter.title || '',
         content: content,
-        publishDate: chapter.publishDate.toDate().toISOString().split('T')[0],
+        publishDate: new Date(chapter.publishDate).toISOString().split('T')[0],
         isPremium: chapter.isPremium || false,
         coinPrice: chapter.coinPrice || 0,
       });
@@ -1667,8 +1694,33 @@ export const ChapterManagement: React.FC = () => {
                   <p className="text-zinc-500 font-medium mt-1">Manage {chapters.length} chapters for this series.</p>
                 </div>
 
-                <div className="flex items-center gap-4 w-full md:w-auto">
-                  <div className="relative w-full">
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                  {selectedChapters.length > 0 && (
+                    <div className="flex items-center gap-2 p-1.5 bg-emerald-50 border border-emerald-100 rounded-2xl w-full sm:w-auto">
+                      <span className="text-[10px] font-black text-emerald-700 px-2 uppercase tracking-widest">{selectedChapters.length} Selected</span>
+                      <button 
+                        onClick={() => setIsBulkUpdateModalOpen(true)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-emerald-400 transition-colors"
+                      >
+                        <Lock className="w-3 h-3" /> Update
+                      </button>
+                      <button 
+                        onClick={() => setIsBulkDeleteModalOpen(true)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-red-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-400 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" /> Delete
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button 
+                      onClick={toggleAllSelection}
+                      className="flex items-center gap-2 px-4 py-3 bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors whitespace-nowrap"
+                    >
+                      {selectedChapters.length === chapters.length ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                      {selectedChapters.length === chapters.length ? 'Deselect' : 'Select All'}
+                    </button>
+                    <div className="relative w-full">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                     <input 
                       type="text" 
@@ -1680,17 +1732,29 @@ export const ChapterManagement: React.FC = () => {
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* Chapter Grid */}
+            {/* Chapter Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredChapters.map((chapter) => (
                   <motion.div 
                     layout
                     key={chapter.id}
-                    className="group bg-white p-4 sm:p-6 rounded-[2rem] sm:rounded-[2.5rem] border border-zinc-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all"
+                    className={cn(
+                      "group bg-white p-4 sm:p-6 rounded-[2rem] sm:rounded-[2.5rem] border transition-all relative",
+                      selectedChapters.includes(chapter.id) ? "border-emerald-500 shadow-xl ring-2 ring-emerald-500/20" : "border-zinc-200 shadow-sm hover:shadow-xl hover:-translate-y-1"
+                    )}
                   >
+                    <div className="absolute top-4 left-4 z-20">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedChapters.includes(chapter.id)}
+                        onChange={() => toggleChapterSelection(chapter.id)}
+                        className="w-5 h-5 rounded-lg border-zinc-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                      />
+                    </div>
                     <div className="flex items-start justify-between mb-4 sm:mb-6">
-                      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-lg sm:text-xl font-black text-zinc-400 group-hover:bg-emerald-50 group-hover:text-emerald-500 transition-colors">
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-zinc-100 rounded-2xl flex items-center justify-center text-lg sm:text-xl font-black text-zinc-400 group-hover:bg-emerald-50 group-hover:text-emerald-500 transition-colors ml-8">
                         #{chapter.chapterNumber}
                       </div>
                       <div className="flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1728,7 +1792,7 @@ export const ChapterManagement: React.FC = () => {
                           )}
                         </div>
                         <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-1">
-                          Published {chapter.publishDate.toDate().toLocaleDateString()}
+                          Published {new Date(chapter.publishDate).toLocaleDateString()}
                         </p>
                       </div>
 
@@ -1765,7 +1829,98 @@ export const ChapterManagement: React.FC = () => {
         </AnimatePresence>
       </main>
 
-      {/* Delete Confirmation Modal */}
+      {/* Bulk Delete Modal */}
+      {isBulkDeleteModalOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-8 space-y-6 text-center">
+            <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto">
+              <Trash2 className="w-8 h-8" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-black uppercase tracking-tight">Delete {selectedChapters.length} Chapters?</h3>
+              <p className="text-zinc-500 font-medium">This action cannot be undone. All pages and data associated with these chapters will be lost.</p>
+            </div>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setIsBulkDeleteModalOpen(false)}
+                className="flex-1 py-3 bg-zinc-100 text-zinc-500 font-bold rounded-xl hover:bg-zinc-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleBulkDelete}
+                className="flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors"
+              >
+                Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Update Modal */}
+      {isBulkUpdateModalOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-8 space-y-6">
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-black uppercase tracking-tight">Bulk Update {selectedChapters.length} Chapters</h3>
+              <p className="text-zinc-500 font-medium">Update premium settings for selected chapters.</p>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-zinc-50 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <Lock className="w-5 h-5 text-amber-500" />
+                  <div>
+                    <p className="text-sm font-bold">Premium Chapter</p>
+                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Requires coins to unlock</p>
+                  </div>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setBulkUpdateData(prev => ({ ...prev, isPremium: !prev.isPremium }))}
+                  className={cn(
+                    "w-12 h-6 rounded-full transition-colors relative",
+                    bulkUpdateData.isPremium ? "bg-amber-500" : "bg-zinc-300"
+                  )}
+                >
+                  <div className={cn(
+                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-transform",
+                    bulkUpdateData.isPremium ? "left-7" : "left-1"
+                  )} />
+                </button>
+              </div>
+              {bulkUpdateData.isPremium && (
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500">Coin Price</label>
+                  <div className="relative">
+                    <Coins className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
+                    <input 
+                      type="number" 
+                      value={bulkUpdateData.coinPrice}
+                      onChange={e => setBulkUpdateData(prev => ({ ...prev, coinPrice: parseInt(e.target.value) || 0 }))}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl pl-12 pr-4 py-3 focus:ring-2 focus:ring-amber-500/20 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-4 pt-4">
+              <button 
+                onClick={() => setIsBulkUpdateModalOpen(false)}
+                className="flex-1 py-3 bg-zinc-100 text-zinc-500 font-bold rounded-xl hover:bg-zinc-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleBulkUpdate}
+                className="flex-1 py-3 bg-black text-white font-bold rounded-xl hover:bg-zinc-800 transition-colors"
+              >
+                Update All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-8 space-y-6">

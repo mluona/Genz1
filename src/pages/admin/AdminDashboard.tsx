@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, limit, Timestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 import { Users, BookOpen, Layers, MessageSquare, TrendingUp, Eye, UserPlus, Star, Activity, Shield, Server, Zap } from 'lucide-react';
 import { Series, UserProfile, Comment } from '../../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
@@ -30,24 +29,44 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const seriesSnap = await getDocs(collection(db, 'series'));
-      const commentsSnap = await getDocs(collection(db, 'comments'));
-      
-      setStats(prev => ({
-        ...prev,
-        totalUsers: usersSnap.size,
-        totalSeries: seriesSnap.size,
-        totalComments: commentsSnap.size,
-      }));
+      try {
+        const { count: usersCount } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true });
+        
+        const { count: seriesCount } = await supabase
+          .from('series')
+          .select('*', { count: 'exact', head: true });
+        
+        const { count: commentsCount } = await supabase
+          .from('comments')
+          .select('*', { count: 'exact', head: true });
+        
+        setStats(prev => ({
+          ...prev,
+          totalUsers: usersCount || 0,
+          totalSeries: seriesCount || 0,
+          totalComments: commentsCount || 0,
+        }));
 
-      const recentSeriesQuery = query(collection(db, 'series'), orderBy('lastUpdated', 'desc'), limit(5));
-      const recentSeriesSnap = await getDocs(recentSeriesQuery);
-      setRecentSeries(recentSeriesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Series)));
+        const { data: seriesData } = await supabase
+          .from('series')
+          .select('*')
+          .order('lastUpdated', { ascending: false })
+          .limit(5);
+        
+        setRecentSeries((seriesData as Series[]) || []);
 
-      const recentUsersQuery = query(collection(db, 'users'), limit(5));
-      const recentUsersSnap = await getDocs(recentUsersQuery);
-      setRecentUsers(recentUsersSnap.docs.map(d => ({ ...d.data() } as unknown as UserProfile)));
+        const { data: usersData } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('id', { ascending: false }) // Assuming ID is sequential or just for recent
+          .limit(5);
+        
+        setRecentUsers((usersData as unknown as UserProfile[]) || []);
+      } catch (error) {
+        console.error("Error fetching admin stats:", error);
+      }
     };
 
     fetchStats();
@@ -234,8 +253,8 @@ export const AdminDashboard: React.FC = () => {
           </div>
           <div className="divide-y divide-zinc-100">
             {recentUsers.map((user) => (
-              <div key={user.uid} className="p-4 flex items-center gap-3 sm:gap-4 hover:bg-zinc-50 transition-colors">
-                <img src={user.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-10 h-10 rounded-full" alt="" referrerPolicy="no-referrer" />
+              <div key={user.id} className="p-4 flex items-center gap-3 sm:gap-4 hover:bg-zinc-50 transition-colors">
+                <img src={user.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} className="w-10 h-10 rounded-full" alt="" referrerPolicy="no-referrer" />
                 <div className="flex-1 min-w-0">
                   <p className="font-bold truncate">{user.username}</p>
                   <p className="text-xs text-zinc-500 font-medium truncate">{user.email}</p>

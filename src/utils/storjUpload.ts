@@ -60,8 +60,8 @@ export async function uploadToStorj(
           console.log(`[Storj] Upload successful: ${url}`);
           resolve(url);
         } else {
-          console.error(`[Storj] Upload error:`, xhr.status, xhr.statusText);
-          reject(new Error(`Failed to upload to Storj: ${xhr.statusText}`));
+          console.error(`[Storj] Upload error:`, xhr.status, xhr.statusText, xhr.responseText);
+          reject(new Error(`Failed to upload to Storj: ${xhr.statusText} - ${xhr.responseText}`));
         }
       };
 

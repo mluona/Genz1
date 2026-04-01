@@ -20,11 +20,9 @@ import {
   Coins
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { signOut } from 'firebase/auth';
-import { auth } from '../../firebase';
 
 export const AdminLayout: React.FC = () => {
-  const { profile, isAdmin, loading } = useAuth();
+  const { profile, isAdmin, loading, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 1024);
@@ -62,7 +60,7 @@ export const AdminLayout: React.FC = () => {
   ];
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await signOut();
     navigate('/');
   };
 
@@ -146,7 +144,7 @@ export const AdminLayout: React.FC = () => {
                 <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Administrator</p>
               </div>
               <img 
-                src={profile?.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.uid}`} 
+                src={profile?.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.id}`} 
                 className="w-10 h-10 rounded-full border border-zinc-200" 
                 alt="Admin" 
               />

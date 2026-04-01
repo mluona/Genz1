@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, where } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 import { Comment } from '../../types';
-import { Trash2, MessageSquare, ShieldAlert, CheckCircle, Flag, Filter, X } from 'lucide-react';
+import { Trash2, MessageSquare, ShieldAlert, Flag } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export const CommentModeration: React.FC = () => {
@@ -11,22 +10,50 @@ export const CommentModeration: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
 
-  useEffect(() => {
-    let q = query(collection(db, 'comments'), orderBy('timestamp', 'desc'));
-    if (filter === 'flagged') {
-      q = query(collection(db, 'comments'), where('isFlagged', '==', true), orderBy('timestamp', 'desc'));
+  const fetchComments = async () => {
+    try {
+      let query = supabase
+        .from('comments')
+        .select('*')
+        .order('timestamp', { ascending: false });
+      
+      if (filter === 'flagged') {
+        query = query.eq('isFlagged', true);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setComments((data as Comment[]) || []);
+    } catch (error) {
+      console.error("Error fetching comments:", error);
     }
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setComments(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Comment)));
-    });
-    return () => unsubscribe();
+  };
+
+  useEffect(() => {
+    fetchComments();
+
+    const channel = supabase
+      .channel('comment_moderation_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => {
+        fetchComments();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [filter]);
 
   const handleDelete = async () => {
     if (commentToDelete) {
       try {
-        await deleteDoc(doc(db, 'comments', commentToDelete));
+        const { error } = await supabase
+          .from('comments')
+          .delete()
+          .eq('id', commentToDelete);
+        
+        if (error) throw error;
+        
         setIsDeleteModalOpen(false);
         setCommentToDelete(null);
       } catch (error) {
@@ -37,7 +64,12 @@ export const CommentModeration: React.FC = () => {
 
   const handleToggleFlag = async (id: string, currentStatus: boolean) => {
     try {
-      await updateDoc(doc(db, 'comments', id), { isFlagged: !currentStatus });
+      const { error } = await supabase
+        .from('comments')
+        .update({ isFlagged: !currentStatus })
+        .eq('id', id);
+      
+      if (error) throw error;
     } catch (error) {
       console.error("Error toggling flag:", error);
     }
@@ -77,7 +109,7 @@ export const CommentModeration: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="font-bold">{comment.username}</span>
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                      {comment.timestamp ? formatDistanceToNow(comment.timestamp.toDate(), { addSuffix: true }) : 'Just now'}
+                      {comment.timestamp ? formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true }) : 'Just now'}
                     </span>
                     {comment.isFlagged && (
                       <span className="flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-600 text-[8px] font-black uppercase tracking-widest rounded-full">

@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestore';
+import { supabase } from '../supabase';
 import { Series } from '../types';
 import { SeriesCard } from '../components/SeriesCard';
 import { RecentlyUpdatedCard } from '../components/RecentlyUpdatedCard';
@@ -21,26 +19,67 @@ export const Home: React.FC = () => {
   const [activeTopTab, setActiveTopTab] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
 
   useEffect(() => {
-    const recentQuery = query(collection(db, 'series'), limit(10));
-    const dailyQuery = query(collection(db, 'series'), orderBy('dailyViews', 'desc'), limit(6));
-    const weeklyQuery = query(collection(db, 'series'), orderBy('weeklyViews', 'desc'), limit(6));
-    const monthlyQuery = query(collection(db, 'series'), orderBy('monthlyViews', 'desc'), limit(6));
-    const popularQuery = query(collection(db, 'series'), orderBy('rating', 'desc'), limit(6));
+    const fetchData = async () => {
+      try {
+        // Fetch Recently Updated
+        const { data: recentData } = await supabase
+          .from('series')
+          .select('*')
+          .order('lastUpdated', { ascending: false })
+          .limit(10);
+        if (recentData) setRecentlyUpdated(recentData as Series[]);
 
-    const unsubscribeRecent = onSnapshot(recentQuery, (snapshot) => setRecentlyUpdated(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Series))), (error) => { console.error("recentQuery error:", error); handleFirestoreError(error, OperationType.LIST, 'series'); });
-    const unsubscribeDaily = onSnapshot(dailyQuery, (snapshot) => setDailyTop(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Series))), (error) => { console.error("dailyQuery error:", error); handleFirestoreError(error, OperationType.LIST, 'series'); });
-    const unsubscribeWeekly = onSnapshot(weeklyQuery, (snapshot) => setWeeklyTop(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Series))), (error) => { console.error("weeklyQuery error:", error); handleFirestoreError(error, OperationType.LIST, 'series'); });
-    const unsubscribeMonthly = onSnapshot(monthlyQuery, (snapshot) => setMonthlyTop(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Series))), (error) => { console.error("monthlyQuery error:", error); handleFirestoreError(error, OperationType.LIST, 'series'); });
-    const unsubscribePopular = onSnapshot(popularQuery, (snapshot) => setPopularWorks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Series))), (error) => { console.error("popularQuery error:", error); handleFirestoreError(error, OperationType.LIST, 'series'); });
+        // Fetch Daily Top
+        const { data: dailyData } = await supabase
+          .from('series')
+          .select('*')
+          .order('dailyViews', { ascending: false })
+          .limit(6);
+        if (dailyData) setDailyTop(dailyData as Series[]);
 
-    setLoading(false);
+        // Fetch Weekly Top
+        const { data: weeklyData } = await supabase
+          .from('series')
+          .select('*')
+          .order('weeklyViews', { ascending: false })
+          .limit(6);
+        if (weeklyData) setWeeklyTop(weeklyData as Series[]);
+
+        // Fetch Monthly Top
+        const { data: monthlyData } = await supabase
+          .from('series')
+          .select('*')
+          .order('monthlyViews', { ascending: false })
+          .limit(6);
+        if (monthlyData) setMonthlyTop(monthlyData as Series[]);
+
+        // Fetch Popular Works
+        const { data: popularData } = await supabase
+          .from('series')
+          .select('*')
+          .order('rating', { ascending: false })
+          .limit(6);
+        if (popularData) setPopularWorks(popularData as Series[]);
+
+      } catch (error) {
+        console.error("Error fetching data from Supabase:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    // Set up real-time subscription for series updates
+    const channel = supabase
+      .channel('series_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'series' }, () => {
+        fetchData();
+      })
+      .subscribe();
 
     return () => {
-      unsubscribeRecent();
-      unsubscribeDaily();
-      unsubscribeWeekly();
-      unsubscribeMonthly();
-      unsubscribePopular();
+      supabase.removeChannel(channel);
     };
   }, []);
 

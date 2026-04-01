@@ -23,3 +23,16 @@ export const db = firebaseConfig.firestoreDatabaseId
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Connection test
+async function testFirestoreConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    console.log("Firestore connection successful.");
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Firestore Error: Could not reach the backend. This usually indicates an incorrect projectId or firestoreDatabaseId in your configuration.");
+    }
+  }
+}
+testFirestoreConnection();

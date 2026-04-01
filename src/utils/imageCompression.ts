@@ -52,9 +52,8 @@ export const compressImage = async (file: Blob, maxSizeMB: number = 0.9): Promis
               height = Math.round(height * 0.8);
               canvas.width = width;
               canvas.height = height;
-              quality = 0.8; // reset quality for new size
             }
-            compress();
+            setTimeout(compress, 0);
           }
         };
         compress();
@@ -86,7 +85,7 @@ export const splitAndCompressImage = async (file: Blob, maxSizeMB: number = 0.9)
         const scaledTotalHeight = Math.round(totalHeight * scale);
 
         const processSlices = () => {
-          while (currentY < scaledTotalHeight) {
+          if (currentY < scaledTotalHeight) {
             const sliceHeight = Math.min(MAX_HEIGHT, scaledTotalHeight - currentY);
             
             const canvas = document.createElement('canvas');
@@ -119,8 +118,12 @@ export const splitAndCompressImage = async (file: Blob, maxSizeMB: number = 0.9)
             
             slices.push(dataUrl);
             currentY += sliceHeight;
+            
+            // Process next slice asynchronously
+            setTimeout(processSlices, 0);
+          } else {
+            resolve(slices);
           }
-          resolve(slices);
         };
         
         processSlices();

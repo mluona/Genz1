@@ -1,16 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { doc, updateDoc, getDocs, collection, query, where, documentId, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestore';
-import { signOut } from 'firebase/auth';
+import { supabase } from '../supabase';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, Settings, Heart, History, Bookmark, LogOut, Edit2, Camera, ChevronRight, Coins, X } from 'lucide-react';
 import { Series, Transaction, CoinPackage } from '../types';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
 export const Profile: React.FC = () => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,18 +28,23 @@ export const Profile: React.FC = () => {
     if (activeTab === 'wallet' && user) {
       const fetchTransactionsAndPackages = async () => {
         try {
-          const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-          const snapshot = await getDocs(q)
-            .catch(e => { handleFirestoreError(e, OperationType.LIST, 'transactions'); throw e; });
-          const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-          txs.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
-          setTransactions(txs);
+          const { data: txData, error: txError } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('userId', user.id)
+            .order('createdAt', { ascending: false });
+          
+          if (txError) throw txError;
+          setTransactions((txData as Transaction[]) || []);
 
-          const packagesSnapshot = await getDocs(query(collection(db, 'coinPackages'), where('isActive', '==', true)))
-            .catch(e => { handleFirestoreError(e, OperationType.LIST, 'coinPackages'); throw e; });
-          const packages = packagesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CoinPackage));
-          packages.sort((a, b) => a.coins - b.coins);
-          setCoinPackages(packages);
+          const { data: pkgData, error: pkgError } = await supabase
+            .from('coin_packages')
+            .select('*')
+            .eq('isActive', true)
+            .order('coins', { ascending: true });
+          
+          if (pkgError) throw pkgError;
+          setCoinPackages((pkgData as CoinPackage[]) || []);
         } catch (error) {
           console.error("Error fetching wallet data:", error);
         }
@@ -76,26 +78,23 @@ export const Profile: React.FC = () => {
           return;
         }
 
-        // Fetch series in chunks of 10 (Firestore 'in' query limit)
         const idsArray = Array.from(allSeriesIds);
-        const seriesMap = new Map<string, Series>();
+        const { data: seriesData, error: seriesError } = await supabase
+          .from('series')
+          .select('*')
+          .in('id', idsArray);
         
-        for (let i = 0; i < idsArray.length; i += 10) {
-          const chunk = idsArray.slice(i, i + 10);
-          const q = query(collection(db, 'series'), where(documentId(), 'in', chunk));
-          const snapshot = await getDocs(q)
-            .catch(e => { handleFirestoreError(e, OperationType.LIST, 'series'); throw e; });
-          snapshot.docs.forEach(doc => {
-            seriesMap.set(doc.id, { id: doc.id, ...doc.data() } as Series);
-          });
-        }
+        if (seriesError) throw seriesError;
+        
+        const seriesMap = new Map<string, Series>();
+        seriesData?.forEach(s => seriesMap.set(s.id, s as Series));
 
         const uniqueFavorites = Array.from(new Set(profile.favorites || []));
         const favs = uniqueFavorites.map(id => seriesMap.get(id)).filter(Boolean) as Series[];
         setFavoriteSeries(favs);
 
         const hist = (profile.history || [])
-          .sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
           .filter((h, index, self) => index === self.findIndex((t) => t.seriesId === h.seriesId))
           .map(h => {
             const s = seriesMap.get(h.seriesId);
@@ -120,8 +119,12 @@ export const Profile: React.FC = () => {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await updateDoc(doc(db, 'users', user.uid), formData)
-        .catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
+      const { error } = await supabase
+        .from('profiles')
+        .update(formData)
+        .eq('id', user.id);
+      
+      if (error) throw error;
       setIsEditing(false);
     } catch (error) {
       console.error("Update failed:", error);
@@ -129,36 +132,45 @@ export const Profile: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await signOut();
     navigate('/');
   };
 
   const handlePurchaseCoins = async (amount: number, price: number) => {
-    if (!user) return;
+    if (!user || !profile) return;
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        coins: (profile?.coins || 0) + amount
-      }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          coins: (profile.coins || 0) + amount
+        })
+        .eq('id', user.id);
 
-      await addDoc(collection(db, 'transactions'), {
-        userId: user.uid,
-        amount,
-        type: 'purchase',
-        description: `Purchased ${amount} coins`,
-        timestamp: serverTimestamp()
-      }).catch(e => handleFirestoreError(e, OperationType.CREATE, 'transactions'));
+      if (profileError) throw profileError;
+
+      const { error: transError } = await supabase
+        .from('transactions')
+        .insert([{
+          userId: user.id,
+          amount,
+          type: 'purchase',
+          description: `Purchased ${amount} coins`,
+          timestamp: new Date().toISOString()
+        }]);
+
+      if (transError) throw transError;
 
       alert(`Successfully purchased ${amount} coins!`);
       setSelectedPackage(null);
-      // Refresh transactions if on wallet tab
+      
       if (activeTab === 'wallet') {
-        const q = query(collection(db, 'transactions'), where('userId', '==', user.uid));
-        const snapshot = await getDocs(q)
-          .catch(e => { handleFirestoreError(e, OperationType.LIST, 'transactions'); throw e; });
-        const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-        txs.sort((a: any, b: any) => b.timestamp?.toMillis() - a.timestamp?.toMillis());
-        setTransactions(txs);
+        const { data: txData } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('userId', user.id)
+          .order('timestamp', { ascending: false });
+        
+        setTransactions((txData as Transaction[]) || []);
       }
     } catch (error) {
       console.error("Error purchasing coins:", error);
@@ -174,13 +186,13 @@ export const Profile: React.FC = () => {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 -mt-24 relative z-10">
-        <div className="flex flex-col md:flex-row gap-8 items-start">
+        <div className="flex flex-col lg:flex-row gap-8 items-start">
           {/* Profile Sidebar */}
-          <div className="w-full md:w-80 space-y-6">
-            <div className="bg-zinc-900 border border-white/5 rounded-[2.5rem] p-8 text-center space-y-6">
+          <div className="w-full lg:w-80 space-y-6">
+            <div className="bg-zinc-900 border border-white/5 rounded-[2.5rem] p-6 sm:p-8 text-center space-y-6">
               <div className="relative inline-block group">
                 <img 
-                  src={profile?.profilePicture || user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} 
+                  src={profile?.profilePicture || user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} 
                   className="w-32 h-32 rounded-full border-4 border-zinc-950 shadow-2xl mx-auto object-cover" 
                   alt="Profile" 
                   referrerPolicy="no-referrer"
@@ -278,22 +290,22 @@ export const Profile: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-8">
-                <div className="flex items-center gap-4 border-b border-white/5 pb-4">
+                <div className="flex items-center gap-2 sm:gap-4 border-b border-white/5 pb-4 overflow-x-auto no-scrollbar">
                   <button 
                     onClick={() => setActiveTab('history')}
-                    className={`px-6 py-2 text-sm font-black uppercase tracking-widest transition-colors rounded-full ${activeTab === 'history' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
+                    className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-black uppercase tracking-widest transition-colors rounded-full whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
                   >
                     History
                   </button>
                   <button 
                     onClick={() => setActiveTab('favorites')}
-                    className={`px-6 py-2 text-sm font-black uppercase tracking-widest transition-colors rounded-full ${activeTab === 'favorites' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
+                    className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-black uppercase tracking-widest transition-colors rounded-full whitespace-nowrap ${activeTab === 'favorites' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
                   >
                     Favorites
                   </button>
                   <button 
                     onClick={() => setActiveTab('wallet')}
-                    className={`px-6 py-2 text-sm font-black uppercase tracking-widest transition-colors rounded-full ${activeTab === 'wallet' ? 'bg-amber-500 text-black' : 'text-zinc-500 hover:text-amber-500 hover:bg-amber-500/5'}`}
+                    className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-black uppercase tracking-widest transition-colors rounded-full whitespace-nowrap ${activeTab === 'wallet' ? 'bg-amber-500 text-black' : 'text-zinc-500 hover:text-amber-500 hover:bg-amber-500/5'}`}
                   >
                     Wallet
                   </button>
@@ -403,7 +415,7 @@ export const Profile: React.FC = () => {
                             <div key={tx.id} className="flex items-center justify-between p-4 bg-zinc-950 rounded-xl border border-white/5">
                               <div>
                                 <p className="font-bold text-sm">{tx.description}</p>
-                                <p className="text-xs text-zinc-500">{tx.timestamp ? new Date(tx.timestamp.toDate()).toLocaleDateString() : 'Just now'}</p>
+                                <p className="text-xs text-zinc-500">{tx.timestamp ? new Date(tx.timestamp).toLocaleDateString() : 'Just now'}</p>
                               </div>
                               <div className={`font-black ${tx.amount > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                                 {tx.amount > 0 ? '+' : ''}{tx.amount}

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, updateDoc, doc, deleteDoc, query, orderBy, Timestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 import { UserProfile, UserRole } from '../../types';
 import { Shield, Ban, Trash2, Search, MoreVertical, Filter, Calendar, Mail, User as UserIcon, CheckCircle, XCircle, Coins } from 'lucide-react';
 
@@ -11,17 +10,41 @@ export const UserManagement: React.FC = () => {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [coinsToAdd, setCoinsToAdd] = useState<number>(0);
 
+  const fetchUsers = async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('createdAt', { ascending: false });
+    
+    if (error) {
+      console.error("Error fetching users:", error);
+      return;
+    }
+    setUsers((data as UserProfile[]) || []);
+  };
+
   useEffect(() => {
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setUsers(snapshot.docs.map(d => ({ ...d.data() } as unknown as UserProfile)));
-    });
-    return () => unsubscribe();
+    fetchUsers();
+
+    const channel = supabase
+      .channel('users_admin_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleRoleChange = async (uid: string, newRole: UserRole) => {
     try {
-      await updateDoc(doc(db, 'users', uid), { role: newRole });
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('uid', uid);
+      if (error) throw error;
     } catch (error) {
       console.error("Error updating role:", error);
     }
@@ -29,7 +52,11 @@ export const UserManagement: React.FC = () => {
 
   const handleBanUser = async (uid: string, isBanned: boolean) => {
     try {
-      await updateDoc(doc(db, 'users', uid), { banned: isBanned });
+      const { error } = await supabase
+        .from('profiles')
+        .update({ banned: isBanned })
+        .eq('uid', uid);
+      if (error) throw error;
     } catch (error) {
       console.error("Error banning user:", error);
     }
@@ -38,7 +65,11 @@ export const UserManagement: React.FC = () => {
   const handleUpdateCoins = async (uid: string, currentCoins: number = 0) => {
     if (coinsToAdd === 0) return;
     try {
-      await updateDoc(doc(db, 'users', uid), { coins: currentCoins + coinsToAdd });
+      const { error } = await supabase
+        .from('profiles')
+        .update({ coins: currentCoins + coinsToAdd })
+        .eq('uid', uid);
+      if (error) throw error;
       setCoinsToAdd(0);
       // Update local selected user state to reflect changes immediately
       setSelectedUser(prev => prev ? { ...prev, coins: (prev.coins || 0) + coinsToAdd } : null);
@@ -107,10 +138,10 @@ export const UserManagement: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {filteredUsers.map((user) => (
-                <tr key={user.uid} className="hover:bg-zinc-50 transition-colors cursor-pointer" onClick={() => setSelectedUser(user)}>
+                <tr key={user.id} className="hover:bg-zinc-50 transition-colors cursor-pointer" onClick={() => setSelectedUser(user)}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-4">
-                      <img src={user.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} className="w-10 h-10 rounded-full shrink-0" alt="" referrerPolicy="no-referrer" />
+                      <img src={user.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`} className="w-10 h-10 rounded-full shrink-0" alt="" referrerPolicy="no-referrer" />
                       <div className="min-w-0">
                         <p className="font-bold truncate">{user.username || (user as any).displayName || (user as any).name || 'Unknown'}</p>
                         <p className="text-xs text-zinc-500 font-medium truncate">{user.email}</p>
@@ -121,7 +152,7 @@ export const UserManagement: React.FC = () => {
                     <div onClick={e => e.stopPropagation()}>
                       <select 
                         value={user.role}
-                        onChange={(e) => handleRoleChange(user.uid, e.target.value as UserRole)}
+                        onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
                         className="bg-zinc-100 border-none rounded-lg px-3 py-1 text-xs font-bold outline-none"
                       >
                         <option value="user">User</option>
@@ -134,7 +165,7 @@ export const UserManagement: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-xs font-bold text-zinc-400 whitespace-nowrap">
-                    {user.createdAt ? (user.createdAt as any).toDate().toLocaleDateString() : 'Unknown'}
+                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Unknown'}
                   </td>
                   <td className="px-6 py-4 text-xs font-bold text-amber-500">
                     {user.coins || 0}
@@ -147,7 +178,7 @@ export const UserManagement: React.FC = () => {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                       <button 
-                        onClick={() => handleBanUser(user.uid, !user.banned)}
+                        onClick={() => handleBanUser(user.id, !user.banned)}
                         className={`p-2 rounded-lg transition-colors ${user.banned ? 'text-emerald-500 hover:bg-emerald-50' : 'text-orange-500 hover:bg-orange-50'}`}
                         title={user.banned ? 'Unban User' : 'Ban User'}
                       >
@@ -178,7 +209,7 @@ export const UserManagement: React.FC = () => {
             
             <div className="flex flex-col items-center text-center space-y-4">
               <img 
-                src={selectedUser.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedUser.uid}`} 
+                src={selectedUser.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedUser.id}`} 
                 className="w-24 h-24 rounded-full border-4 border-zinc-100 shadow-lg" 
                 alt="" 
                 referrerPolicy="no-referrer"
@@ -198,7 +229,7 @@ export const UserManagement: React.FC = () => {
                   <Calendar className="w-3 h-3" /> Joined
                 </p>
                 <p className="text-sm font-bold">
-                  {selectedUser.createdAt ? (selectedUser.createdAt as any).toDate().toLocaleDateString() : 'Unknown'}
+                  {selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : 'Unknown'}
                 </p>
               </div>
               <div className="p-4 bg-zinc-50 rounded-2xl space-y-1">
@@ -227,7 +258,7 @@ export const UserManagement: React.FC = () => {
                   className="flex-1 bg-white border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
                 <button 
-                  onClick={() => handleUpdateCoins(selectedUser.uid, selectedUser.coins)}
+                  onClick={() => handleUpdateCoins(selectedUser.id, selectedUser.coins)}
                   disabled={coinsToAdd === 0}
                   className="px-4 py-2 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -239,7 +270,7 @@ export const UserManagement: React.FC = () => {
 
             <div className="flex gap-4">
               <button 
-                onClick={() => handleBanUser(selectedUser.uid, !selectedUser.banned)}
+                onClick={() => handleBanUser(selectedUser.id, !selectedUser.banned)}
                 className={`flex-1 py-3 font-bold rounded-xl transition-colors ${selectedUser.banned ? 'bg-emerald-500 text-black hover:bg-emerald-400' : 'bg-orange-500 text-white hover:bg-orange-400'}`}
               >
                 {selectedUser.banned ? 'Unban User' : 'Ban User'}

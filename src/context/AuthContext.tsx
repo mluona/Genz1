@@ -1,15 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, getDoc, Timestamp } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestore';
+import { supabase } from '../supabase';
 import { UserProfile } from '../types';
+import { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -17,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   isAdmin: false,
+  signOut: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -27,66 +27,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
-      if (firebaseUser) {
-        // Check if profile exists, if not create it
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef)
-          .catch(e => { handleFirestoreError(e, OperationType.GET, `users/${firebaseUser.uid}`); throw e; });
-        
-        if (!userDoc.exists()) {
-          const newProfile: UserProfile = {
-            uid: firebaseUser.uid,
-            username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-            email: firebaseUser.email || '',
-            bio: 'Reading is life.',
-            profilePicture: firebaseUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
-            role: ((firebaseUser.email === 'aynmluona@gmail.com' || firebaseUser.email === 'genz-manga@gmail.com') && firebaseUser.emailVerified) ? 'admin' : 'user',
-            favorites: [],
-            history: [],
-            bookmarks: [],
-            banned: false,
-          };
-          await setDoc(userDocRef, newProfile)
-            .catch(e => handleFirestoreError(e, OperationType.CREATE, `users/${firebaseUser.uid}`));
-          setProfile(newProfile);
-        }
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user.id);
       } else {
-        setProfile(null);
-      }
-      
-      if (!firebaseUser) {
         setLoading(false);
       }
     });
 
-    return () => unsubscribeAuth();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const unsubscribeProfile = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-      if (doc.exists()) {
-        setProfile(doc.data() as UserProfile);
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) {
+        fetchProfile(currentUser.id);
+      } else {
+        setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
-      setLoading(false);
     });
 
-    return () => unsubscribeProfile();
-  }, [user]);
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchProfile = async (uid: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('uid', uid)
+        .single();
+
+      if (error && error.code === 'PGRST116') {
+        // Profile doesn't exist, create it
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData.user) {
+          const newProfile: UserProfile = {
+            id: userData.user.id,
+            username: userData.user.user_metadata.full_name || userData.user.email?.split('@')[0] || 'User',
+            email: userData.user.email || '',
+            bio: 'Reading is life.',
+            profilePicture: userData.user.user_metadata.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.user.id}`,
+            role: (userData.user.email === 'aynmluona@gmail.com' || userData.user.email === 'genz-manga@gmail.com') ? 'admin' : 'user',
+            favorites: [],
+            history: [],
+            bookmarks: [],
+            banned: false,
+            coins: 0,
+          };
+          
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert([newProfile]);
+            
+          if (insertError) throw insertError;
+          setProfile(newProfile);
+        }
+      } else if (error) {
+        throw error;
+      } else {
+        setProfile(data as UserProfile);
+      }
+    } catch (error) {
+      console.error('Error fetching/creating profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const isAdmin = profile?.role === 'admin' || 
-    (user?.email?.toLowerCase() === 'aynmluona@gmail.com' && user?.emailVerified) || 
-    (user?.email?.toLowerCase() === 'genz-manga@gmail.com' && user?.emailVerified);
+    user?.email?.toLowerCase() === 'aynmluona@gmail.com' || 
+    user?.email?.toLowerCase() === 'genz-manga@gmail.com';
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, signOut }}>
       {children}
     </AuthContext.Provider>
   );

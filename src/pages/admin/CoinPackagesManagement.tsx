@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
-import { db } from '../../firebase';
-import { handleFirestoreError, OperationType } from '../../utils/firestore';
+import { supabase } from '../../supabase';
 import { Plus, Edit2, Trash2, X, Save, Coins } from 'lucide-react';
 
 interface CoinPackage {
@@ -12,7 +10,7 @@ interface CoinPackage {
   currency: string;
   bonusCoins?: number;
   isActive: boolean;
-  createdAt: Timestamp;
+  createdAt: string;
 }
 
 export const CoinPackagesManagement: React.FC = () => {
@@ -30,34 +28,59 @@ export const CoinPackagesManagement: React.FC = () => {
     isActive: true
   });
 
-  useEffect(() => {
-    const q = query(collection(db, 'coinPackages'), orderBy('price', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setPackages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CoinPackage)));
-      setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'coinPackages'));
+  const fetchPackages = async () => {
+    const { data, error } = await supabase
+      .from('coin_packages')
+      .select('*')
+      .order('price', { ascending: true });
+    
+    if (error) {
+      console.error("Error fetching coin packages:", error);
+      return;
+    }
+    setPackages(data || []);
+    setLoading(false);
+  };
 
-    return () => unsubscribe();
+  useEffect(() => {
+    fetchPackages();
+
+    const channel = supabase
+      .channel('coin_packages_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'coin_packages' }, () => {
+        fetchPackages();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       if (editingId) {
-        await updateDoc(doc(db, 'coinPackages', editingId), {
-          ...formData
-        });
+        const { error } = await supabase
+          .from('coin_packages')
+          .update(formData)
+          .eq('id', editingId);
+        if (error) throw error;
       } else {
-        await addDoc(collection(db, 'coinPackages'), {
-          ...formData,
-          createdAt: Timestamp.now()
-        });
+        const { error } = await supabase
+          .from('coin_packages')
+          .insert({
+            ...formData,
+            createdAt: new Date().toISOString()
+          });
+        if (error) throw error;
       }
       setIsEditing(false);
       setEditingId(null);
       setFormData({ name: '', coins: 100, price: 1.00, currency: 'USD', bonusCoins: 0, isActive: true });
-    } catch (error) {
-      handleFirestoreError(error, editingId ? OperationType.UPDATE : OperationType.CREATE, 'coinPackages');
+    } catch (error: any) {
+      console.error("Error saving coin package:", error);
+      alert(error.message || "Failed to save package");
     }
   };
 
@@ -77,9 +100,14 @@ export const CoinPackagesManagement: React.FC = () => {
   const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this package?')) {
       try {
-        await deleteDoc(doc(db, 'coinPackages', id));
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `coinPackages/${id}`);
+        const { error } = await supabase
+          .from('coin_packages')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+      } catch (error: any) {
+        console.error("Error deleting coin package:", error);
+        alert(error.message || "Failed to delete package");
       }
     }
   };

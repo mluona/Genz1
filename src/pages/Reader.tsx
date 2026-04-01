@@ -1,16 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, where, getDocs, getDoc, updateDoc, arrayUnion, arrayRemove, Timestamp, orderBy, addDoc, getCountFromServer } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestore';
+import { supabase } from '../supabase';
 import CommentsSection from '../components/CommentsSection';
 import { ChevronLeft, ChevronRight, Settings, Maximize2, List, Moon, Sun, Layout, ArrowUp, Bookmark, BookmarkCheck, Menu, X, Share2, MessageSquare, Heart, Lock, Coins } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Series, Chapter } from '../types';
-
 import { getProxiedImageUrl } from '../utils/imageUtils';
+import { LoginModal } from '../components/LoginModal';
 
 const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical', onLoaded }: { seriesId: string, chapterId: string, pageIndex: number, initialSrc: string, mode?: 'vertical' | 'horizontal' | 'preload', onLoaded?: () => void }) => {
   const proxiedSrc = getProxiedImageUrl(initialSrc) || '';
@@ -21,7 +19,6 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let isMounted = true;
     let blobUrl: string | null = null;
     if (proxiedSrc) {
       if (proxiedSrc.startsWith('data:image/')) {
@@ -75,11 +72,16 @@ const LazyPage = ({ seriesId, chapterId, pageIndex, initialSrc, mode = 'vertical
     const fetchPage = async () => {
       try {
         const pageId = `page_${pageIndex.toString().padStart(4, '0')}`;
-        const pageRef = doc(db, `series/${seriesId}/chapters/${chapterId}/pages`, pageId);
-        const pageSnap = await getDoc(pageRef);
+        const { data, error } = await supabase
+          .from('pages')
+          .select('content')
+          .eq('seriesId', seriesId)
+          .eq('chapterId', chapterId)
+          .eq('id', pageId)
+          .single();
         
-        if (pageSnap.exists() && isMounted) {
-          const content = pageSnap.data().content;
+        if (data && isMounted) {
+          const content = data.content;
           const proxiedContent = getProxiedImageUrl(content) || '';
           if (proxiedContent && proxiedContent.startsWith('data:image/')) {
             try {
@@ -202,14 +204,40 @@ export const Reader: React.FC = () => {
   
   const [commentsCount, setCommentsCount] = useState(0);
   const [showComments, setShowComments] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   useEffect(() => {
     if (!series || !chapter) return;
-    const commentsQuery = query(collection(db, 'comments'), where('seriesId', '==', series.id), where('chapterId', '==', chapter.id));
-    const unsubscribeComments = onSnapshot(commentsQuery, (snapshot) => {
-      setCommentsCount(snapshot.docs.length);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'comments'));
-    return () => unsubscribeComments();
+    
+    const fetchCommentsCount = async () => {
+      const { count, error } = await supabase
+        .from('comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('seriesId', series.id)
+        .eq('chapterId', chapter.id);
+      
+      if (!error) {
+        setCommentsCount(count || 0);
+      }
+    };
+
+    fetchCommentsCount();
+
+    const channel = supabase
+      .channel(`reader_comments_${chapter.id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'comments',
+        filter: `chapterId=eq.${chapter.id}`
+      }, () => {
+        fetchCommentsCount();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [series, chapter]);
 
   const handleShare = async () => {
@@ -266,93 +294,101 @@ export const Reader: React.FC = () => {
 
     // Fetch series and chapters
     const fetchSeries = async () => {
-      // Assuming slug is ID for now
-      const seriesDoc = await getDocs(query(collection(db, 'series'), where('slug', '==', slug)))
-        .catch(error => handleFirestoreError(error, OperationType.GET, 'series'));
-      
-      if (seriesDoc && !seriesDoc.empty) {
-        const s = { id: seriesDoc.docs[0].id, ...seriesDoc.docs[0].data() } as Series;
-        setSeries(s);
-
-        const chaptersQuery = query(collection(db, `series/${s.id}/chapters`), where('chapterNumber', '==', Number(chapterNum)));
-        const chapterSnapshot = await getDocs(chaptersQuery)
-          .catch(error => handleFirestoreError(error, OperationType.GET, `series/${s.id}/chapters`));
+      try {
+        const { data: seriesData, error: seriesError } = await supabase
+          .from('series')
+          .select('*')
+          .eq('slug', slug)
+          .single();
         
-        if (chapterSnapshot && !chapterSnapshot.empty) {
-          const chapterData = { id: chapterSnapshot.docs[0].id, ...chapterSnapshot.docs[0].data() } as Chapter;
-          
-          // Check premium status
-          if (chapterData.isPremium) {
-            const isUnlocked = profile?.unlockedChapters?.includes(chapterData.id);
-            if (!isUnlocked) {
-              setIsPremiumLocked(true);
-              setChapter({ ...chapterData, content: [] });
-              setLoading(false);
-              return;
-            }
-          }
-          
-          setIsPremiumLocked(false);
+        if (seriesError) throw seriesError;
+        
+        if (seriesData) {
+          const s = seriesData as Series;
+          setSeries(s);
 
-          if (s.type !== 'Novel') {
-            if (!chapterData.content || chapterData.content.length === 0) {
-              const pagesRef = collection(db, `series/${s.id}/chapters/${chapterData.id}/pages`);
-              try {
-                const snapshot = await getCountFromServer(pagesRef);
-                const count = snapshot.data().count || 0;
-                chapterData.content = Array(count).fill('');
-              } catch (error) {
-                handleFirestoreError(error, OperationType.GET, `series/${s.id}/chapters/${chapterData.id}/pages`);
+          const { data: chapterData, error: chapterError } = await supabase
+            .from('chapters')
+            .select('*')
+            .eq('seriesId', s.id)
+            .eq('chapterNumber', Number(chapterNum))
+            .single();
+          
+          if (chapterError) throw chapterError;
+          
+          if (chapterData) {
+            let c = chapterData as Chapter;
+            
+            // Check premium status
+            if (c.isPremium) {
+              const isUnlocked = profile?.unlockedChapters?.includes(c.id);
+              if (!isUnlocked) {
+                setIsPremiumLocked(true);
+                setChapter({ ...c, content: [] });
+                setLoading(false);
+                return;
               }
             }
-          }
-          
-          setChapter(chapterData);
-          
-          // Save to history
-          if (user) {
-            const userRef = doc(db, 'users', user.uid);
-            try {
-              const userSnap = await getDoc(userRef);
-              
-              if (userSnap.exists()) {
-                const userData = userSnap.data();
-                const currentHistory = userData.history || [];
-                const newHistory = currentHistory.filter((h: any) => h.seriesId !== s.id);
+            
+            setIsPremiumLocked(false);
+
+            if (s.type !== 'Novel') {
+              if (!c.content || c.content.length === 0) {
+                const { count, error: countError } = await supabase
+                  .from('pages')
+                  .select('*', { count: 'exact', head: true })
+                  .eq('seriesId', s.id)
+                  .eq('chapterId', c.id);
                 
-                newHistory.push({
-                  seriesId: s.id,
-                  lastChapterId: chapterSnapshot.docs[0].id,
-                  timestamp: Timestamp.now()
-                });
-                
-                if (newHistory.length > 50) {
-                  newHistory.shift();
+                if (!countError) {
+                  c.content = Array(count || 0).fill('');
                 }
-                
-                await updateDoc(userRef, {
-                  history: newHistory
-                }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
               }
-            } catch (error) {
-              handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+            }
+            
+            setChapter(c);
+            
+            // Save to history
+            if (user && profile) {
+              const currentHistory = profile.history || [];
+              const newHistory = currentHistory.filter((h: any) => h.seriesId !== s.id);
+              
+              newHistory.push({
+                seriesId: s.id,
+                lastChapterId: c.id,
+                timestamp: new Date().toISOString()
+              });
+              
+              if (newHistory.length > 50) {
+                newHistory.shift();
+              }
+              
+              await supabase
+                .from('profiles')
+                .update({ history: newHistory })
+                .eq('id', user.id);
             }
           }
-        }
 
-        const allChaptersQuery = query(collection(db, `series/${s.id}/chapters`), orderBy('chapterNumber', 'asc'));
-        const allChaptersSnapshot = await getDocs(allChaptersQuery)
-          .catch(error => handleFirestoreError(error, OperationType.GET, `series/${s.id}/chapters`));
-        
-        if (allChaptersSnapshot) {
-          setChapters(allChaptersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Chapter)));
+          const { data: allChapters, error: allChaptersError } = await supabase
+            .from('chapters')
+            .select('*')
+            .eq('seriesId', s.id)
+            .order('chapterNumber', { ascending: true });
+          
+          if (!allChaptersError) {
+            setChapters((allChapters as Chapter[]) || []);
+          }
         }
+      } catch (error) {
+        console.error("Error fetching reader data:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchSeries();
-  }, [slug, chapterNum, user, authLoading]);
+  }, [slug, chapterNum, user, authLoading, profile]);
 
   useEffect(() => {
     if (profile && chapter) {
@@ -361,16 +397,27 @@ export const Reader: React.FC = () => {
   }, [profile, chapter]);
 
   const toggleBookmark = async () => {
-    if (!user || !chapter) return;
-    const userRef = doc(db, 'users', user.uid);
+    if (!user || !chapter || !profile) return;
+    
+    const currentBookmarks = profile.bookmarks || [];
+    let newBookmarks;
+    
     if (isBookmarked) {
-      await updateDoc(userRef, { bookmarks: arrayRemove(chapter.id) })
-        .catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
-      setIsBookmarked(false);
+      newBookmarks = currentBookmarks.filter(id => id !== chapter.id);
     } else {
-      await updateDoc(userRef, { bookmarks: arrayUnion(chapter.id) })
-        .catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
-      setIsBookmarked(true);
+      newBookmarks = [...currentBookmarks, chapter.id];
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ bookmarks: newBookmarks })
+        .eq('id', user.id);
+      
+      if (error) throw error;
+      setIsBookmarked(!isBookmarked);
+    } catch (error) {
+      console.error("Error toggling bookmark:", error);
     }
   };
 
@@ -388,7 +435,11 @@ export const Reader: React.FC = () => {
   const prevChapter = chapters.find(c => c.chapterNumber === Number(chapterNum) - 1);
 
   const handleUnlockChapter = async () => {
-    if (!user || !profile || !chapter || !chapter.coinPrice) return;
+    if (!user || !profile) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    if (!chapter || !chapter.coinPrice) return;
     
     const userCoins = profile.coins || 0;
     if (userCoins < chapter.coinPrice) {
@@ -398,42 +449,53 @@ export const Reader: React.FC = () => {
     }
 
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        coins: userCoins - chapter.coinPrice,
-        unlockedChapters: arrayUnion(chapter.id)
-      }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
+      const newUnlocked = [...(profile.unlockedChapters || []), chapter.id];
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          coins: userCoins - chapter.coinPrice,
+          unlockedChapters: newUnlocked
+        })
+        .eq('id', user.id);
 
-      await addDoc(collection(db, 'transactions'), {
-        userId: user.uid,
-        amount: -chapter.coinPrice,
-        type: 'unlock_chapter',
-        description: `Unlocked Chapter ${chapter.chapterNumber} of ${series?.title}`,
-        timestamp: Timestamp.now(),
-        chapterId: chapter.id,
-        seriesId: series?.id
-      }).catch(error => handleFirestoreError(error, OperationType.CREATE, 'transactions'));
+      if (profileError) throw profileError;
+
+      const { error: transError } = await supabase
+        .from('transactions')
+        .insert([{
+          userId: user.id,
+          amount: -chapter.coinPrice,
+          type: 'unlock_chapter',
+          description: `Unlocked Chapter ${chapter.chapterNumber} of ${series?.title}`,
+          timestamp: new Date().toISOString(),
+          chapterId: chapter.id,
+          seriesId: series?.id
+        }]);
+
+      if (transError) throw transError;
 
       setIsPremiumLocked(false);
       
       // Fetch content after unlocking
       if (series?.type !== 'Novel') {
-        const pagesRef = collection(db, `series/${series?.id}/chapters/${chapter.id}/pages`);
-        try {
-          const snapshot = await getCountFromServer(pagesRef);
-          const count = snapshot.data().count || 0;
-          setChapter({ ...chapter, content: Array(count).fill('') });
-        } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `series/${series?.id}/chapters/${chapter.id}/pages`);
+        const { count, error: countError } = await supabase
+          .from('pages')
+          .select('*', { count: 'exact', head: true })
+          .eq('seriesId', series?.id)
+          .eq('chapterId', chapter.id);
+        
+        if (!countError) {
+          setChapter({ ...chapter, content: Array(count || 0).fill('') });
         }
       } else {
-        try {
-          const chapterDoc = await getDoc(doc(db, `series/${series?.id}/chapters`, chapter.id));
-          if (chapterDoc.exists()) {
-            setChapter({ id: chapterDoc.id, ...chapterDoc.data() } as Chapter);
-          }
-        } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `series/${series?.id}/chapters/${chapter.id}`);
+        const { data: chapterData, error: chapterError } = await supabase
+          .from('chapters')
+          .select('*')
+          .eq('id', chapter.id)
+          .single();
+        
+        if (chapterData && !chapterError) {
+          setChapter(chapterData as Chapter);
         }
       }
       
@@ -445,7 +507,7 @@ export const Reader: React.FC = () => {
 
   const handleTipCreator = async (amount: number) => {
     if (!user || !profile) {
-      showToast("Please log in to tip the creator.");
+      setIsLoginModalOpen(true);
       return;
     }
     if ((profile.coins || 0) < amount) {
@@ -454,19 +516,27 @@ export const Reader: React.FC = () => {
       return;
     }
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        coins: (profile.coins || 0) - amount
-      }).catch(error => handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`));
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          coins: (profile.coins || 0) - amount
+        })
+        .eq('id', user.id);
+
+      if (profileError) throw profileError;
       
-      await addDoc(collection(db, 'transactions'), {
-        userId: user.uid,
-        amount: -amount,
-        type: 'support_creator',
-        description: `Tipped creator for ${series?.title}`,
-        timestamp: Timestamp.now(),
-        seriesId: series?.id
-      }).catch(error => handleFirestoreError(error, OperationType.CREATE, 'transactions'));
+      const { error: transError } = await supabase
+        .from('transactions')
+        .insert([{
+          userId: user.id,
+          amount: -amount,
+          type: 'support_creator',
+          description: `Tipped creator for ${series?.title}`,
+          timestamp: new Date().toISOString(),
+          seriesId: series?.id
+        }]);
+
+      if (transError) throw transError;
       
       showToast(`Thank you for supporting the creator with ${amount} coins!`);
     } catch (error) {
@@ -499,6 +569,7 @@ export const Reader: React.FC = () => {
       ref={containerRef}
       className={`min-h-screen transition-colors duration-500 ${series?.type === 'Novel' ? getNovelThemeStyles() : 'bg-zinc-950 text-white'}`}
     >
+      <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
       {/* Top Navigation Bar */}
       <motion.div 
         initial={{ y: -100 }}
@@ -506,37 +577,37 @@ export const Reader: React.FC = () => {
         className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-xl border-b border-white/5"
       >
         <div className="absolute bottom-0 left-0 h-0.5 bg-emerald-500 transition-all duration-150" style={{ width: `${readingProgress}%` }} />
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 sm:gap-6">
+        <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 sm:gap-6">
             <button 
-              onClick={() => setShowSidebar(true)}
-              className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white"
+              onClick={(e) => { e.stopPropagation(); setShowSidebar(true); }}
+              className="p-2.5 sm:p-3 bg-zinc-900 hover:bg-zinc-800 rounded-xl sm:rounded-2xl transition-all text-zinc-400 hover:text-white"
             >
               <Menu className="w-5 h-5" />
             </button>
             <button 
-              onClick={() => navigate(`/series/${series.slug}`)}
-              className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all group"
+              onClick={(e) => { e.stopPropagation(); navigate(`/series/${series.slug}`); }}
+              className="p-2.5 sm:p-3 bg-zinc-900 hover:bg-zinc-800 rounded-xl sm:rounded-2xl transition-all group"
               title="Back to Series"
             >
               <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
             </button>
-            <div className="hidden sm:block">
-              <h1 className="text-sm font-black tracking-tight truncate max-w-xs" dir="auto">{series.title}</h1>
+            <div className="hidden xs:block">
+              <h1 className="text-xs sm:text-sm font-black tracking-tight truncate max-w-[120px] sm:max-w-xs" dir="auto">{series.title}</h1>
               <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">Chapter {chapter.chapterNumber}</span>
-                <div className="w-1 h-1 bg-zinc-700 rounded-full" />
-                <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest" dir="auto">{chapter.title || 'Untitled'}</span>
+                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-emerald-500">Ch. {chapter.chapterNumber}</span>
+                <div className="hidden sm:block w-1 h-1 bg-zinc-700 rounded-full" />
+                <span className="hidden sm:block text-[10px] font-bold text-zinc-500 uppercase tracking-widest truncate max-w-[100px]" dir="auto">{chapter.title || 'Untitled'}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {series.type === 'Novel' ? (
               <div className="relative">
                 <button 
                   onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings) }}
-                  className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white"
+                  className="p-2.5 sm:p-3 bg-zinc-900 hover:bg-zinc-800 rounded-xl sm:rounded-2xl transition-all text-zinc-400 hover:text-white"
                   title="Reading Settings"
                 >
                   <Settings className="w-4 h-4" />
@@ -547,24 +618,24 @@ export const Reader: React.FC = () => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 10 }}
-                      className="absolute right-0 top-full mt-2 w-72 bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl z-50 text-white"
+                      className="fixed sm:absolute right-4 sm:right-0 top-20 sm:top-full mt-2 w-[calc(100vw-32px)] sm:w-72 bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl z-50 text-white"
                       onClick={e => e.stopPropagation()}
                     >
                       <div className="space-y-6">
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">Theme</p>
                           <div className="flex gap-2">
-                            <button onClick={() => setNovelTheme('dark')} className={`flex-1 py-2 rounded-xl border ${novelTheme === 'dark' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Dark</button>
-                            <button onClick={() => setNovelTheme('light')} className={`flex-1 py-2 rounded-xl border ${novelTheme === 'light' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Light</button>
-                            <button onClick={() => setNovelTheme('sepia')} className={`flex-1 py-2 rounded-xl border ${novelTheme === 'sepia' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Sepia</button>
+                            <button onClick={() => setNovelTheme('dark')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'dark' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Dark</button>
+                            <button onClick={() => setNovelTheme('light')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'light' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Light</button>
+                            <button onClick={() => setNovelTheme('sepia')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'sepia' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Sepia</button>
                           </div>
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">Font Family</p>
                           <div className="flex gap-2">
-                            <button onClick={() => setFontFamily('serif')} className={`flex-1 py-2 rounded-xl border font-serif ${fontFamily === 'serif' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Serif</button>
-                            <button onClick={() => setFontFamily('sans')} className={`flex-1 py-2 rounded-xl border font-sans ${fontFamily === 'sans' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Sans</button>
-                            <button onClick={() => setFontFamily('mono')} className={`flex-1 py-2 rounded-xl border font-mono ${fontFamily === 'mono' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Mono</button>
+                            <button onClick={() => setFontFamily('serif')} className={`flex-1 py-2 rounded-xl border font-serif text-xs ${fontFamily === 'serif' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Serif</button>
+                            <button onClick={() => setFontFamily('sans')} className={`flex-1 py-2 rounded-xl border font-sans text-xs ${fontFamily === 'sans' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Sans</button>
+                            <button onClick={() => setFontFamily('mono')} className={`flex-1 py-2 rounded-xl border font-mono text-xs ${fontFamily === 'mono' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Mono</button>
                           </div>
                         </div>
                         <div>
@@ -589,17 +660,17 @@ export const Reader: React.FC = () => {
                 </AnimatePresence>
               </div>
             ) : (
-              <div className="flex bg-zinc-900 p-1 rounded-2xl border border-white/5">
+              <div className="flex bg-zinc-900 p-1 rounded-xl sm:rounded-2xl border border-white/5">
                 <button 
-                  onClick={() => setViewMode('vertical')}
-                  className={`p-2 rounded-xl transition-all ${viewMode === 'vertical' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
+                  onClick={(e) => { e.stopPropagation(); setViewMode('vertical'); }}
+                  className={`p-2 rounded-lg sm:rounded-xl transition-all ${viewMode === 'vertical' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
                   title="Vertical Scroll"
                 >
                   <Layout className="w-4 h-4" />
                 </button>
                 <button 
-                  onClick={() => setViewMode('horizontal')}
-                  className={`p-2 rounded-xl transition-all ${viewMode === 'horizontal' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
+                  onClick={(e) => { e.stopPropagation(); setViewMode('horizontal'); }}
+                  className={`p-2 rounded-lg sm:rounded-xl transition-all ${viewMode === 'horizontal' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
                   title="Horizontal Paging"
                 >
                   <Layout className="w-4 h-4 rotate-90" />
@@ -607,12 +678,12 @@ export const Reader: React.FC = () => {
               </div>
             )}
 
-            <div className="h-6 w-px bg-white/5 mx-2" />
+            <div className="hidden sm:block h-6 w-px bg-white/5 mx-2" />
 
             {user && (
               <button 
-                onClick={toggleBookmark}
-                className={`p-3 rounded-2xl transition-all ${isBookmarked ? 'bg-emerald-500/20 text-emerald-500' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                onClick={(e) => { e.stopPropagation(); toggleBookmark(); }}
+                className={`p-2.5 sm:p-3 rounded-xl sm:rounded-2xl transition-all ${isBookmarked ? 'bg-emerald-500/20 text-emerald-500' : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white'}`}
                 title={isBookmarked ? "Remove Bookmark" : "Bookmark Chapter"}
               >
                 {isBookmarked ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
@@ -620,8 +691,8 @@ export const Reader: React.FC = () => {
             )}
 
             <button 
-              onClick={() => setShowComments(true)}
-              className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white relative"
+              onClick={(e) => { e.stopPropagation(); setShowComments(true); }}
+              className="p-2.5 sm:p-3 bg-zinc-900 hover:bg-zinc-800 rounded-xl sm:rounded-2xl transition-all text-zinc-400 hover:text-white relative"
               title="Comments"
             >
               <MessageSquare className="w-4 h-4" />
@@ -633,23 +704,23 @@ export const Reader: React.FC = () => {
             </button>
 
             <button 
-              onClick={handleShare}
-              className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white"
+              onClick={(e) => { e.stopPropagation(); handleShare(); }}
+              className="hidden sm:block p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white"
               title="Share Chapter"
             >
               <Share2 className="w-4 h-4" />
             </button>
 
             <button 
-              onClick={toggleAppTheme}
-              className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white"
+              onClick={(e) => { e.stopPropagation(); toggleAppTheme(); }}
+              className="hidden sm:block p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white"
             >
               {appTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
             
             <button 
-              onClick={toggleFullscreen}
-              className="p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white"
+              onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
+              className="hidden sm:block p-3 bg-zinc-900 hover:bg-zinc-800 rounded-2xl transition-all text-zinc-400 hover:text-white"
             >
               <Maximize2 className="w-4 h-4" />
             </button>
@@ -861,30 +932,30 @@ export const Reader: React.FC = () => {
       <motion.div 
         initial={{ y: 100 }}
         animate={{ y: showControls ? 0 : 100 }}
-        className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-xl border-t border-white/5 px-4 py-6"
+        className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-xl border-t border-white/5 px-4 py-4 sm:py-6"
       >
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-6">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 sm:gap-6">
           <button 
             disabled={!prevChapter}
-            onClick={() => navigate(`/series/${slug}/${Number(chapterNum) - 1}`)}
-            className="flex-1 flex items-center justify-center gap-3 py-4 bg-zinc-900 rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest disabled:opacity-20 hover:bg-zinc-800 transition-all border border-white/5"
+            onClick={(e) => { e.stopPropagation(); navigate(`/series/${slug}/${Number(chapterNum) - 1}`); }}
+            className="flex-1 flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 bg-zinc-900 rounded-xl sm:rounded-[1.5rem] font-black text-[9px] sm:text-[10px] uppercase tracking-widest disabled:opacity-20 hover:bg-zinc-800 transition-all border border-white/5"
           >
-            <ChevronLeft className="w-4 h-4" /> Previous
+            <ChevronLeft className="w-4 h-4" /> <span className="hidden xs:inline">Prev</span>
           </button>
           
-          <div className="flex-1">
+          <div className="flex-[2] sm:flex-1">
             <div className="relative">
               <select 
                 value={chapterNum}
                 onChange={(e) => navigate(`/series/${slug}/${e.target.value}`)}
-                className="w-full bg-zinc-900 border border-white/5 rounded-[1.5rem] px-6 py-4 text-[10px] font-black uppercase tracking-widest focus:outline-none appearance-none cursor-pointer text-center hover:bg-zinc-800 transition-all"
+                className="w-full bg-zinc-900 border border-white/5 rounded-xl sm:rounded-[1.5rem] px-4 sm:px-6 py-3 sm:py-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest focus:outline-none appearance-none cursor-pointer text-center hover:bg-zinc-800 transition-all"
                 dir="auto"
               >
                 {chapters.map(c => (
-                  <option key={c.id} value={c.chapterNumber}>Chapter {c.chapterNumber} {c.title ? `- ${c.title}` : ''}</option>
+                  <option key={c.id} value={c.chapterNumber}>Ch. {c.chapterNumber} {c.title ? `- ${c.title}` : ''}</option>
                 ))}
               </select>
-              <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none">
+              <div className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 pointer-events-none">
                 <List className="w-3 h-3 text-zinc-500" />
               </div>
             </div>
@@ -892,10 +963,10 @@ export const Reader: React.FC = () => {
 
           <button 
             disabled={!nextChapter}
-            onClick={() => navigate(`/series/${slug}/${Number(chapterNum) + 1}`)}
-            className="flex-1 flex items-center justify-center gap-3 py-4 bg-emerald-500 text-black rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest disabled:opacity-20 hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20"
+            onClick={(e) => { e.stopPropagation(); navigate(`/series/${slug}/${Number(chapterNum) + 1}`); }}
+            className="flex-1 flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 bg-emerald-500 text-black rounded-xl sm:rounded-[1.5rem] font-black text-[9px] sm:text-[10px] uppercase tracking-widest disabled:opacity-20 hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20"
           >
-            Next <ChevronRight className="w-4 h-4" />
+            <span className="hidden xs:inline">Next</span> <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       </motion.div>

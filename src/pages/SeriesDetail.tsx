@@ -1,17 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { doc, onSnapshot, collection, query, orderBy, getDocs, where, Timestamp, updateDoc, arrayUnion, arrayRemove, addDoc } from 'firebase/firestore';
-import { auth, googleProvider, db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestore';
-import { signInWithPopup } from 'firebase/auth';
+import { supabase } from '../supabase';
 import CommentsSection from '../components/CommentsSection';
 import { Star, Eye, Clock, List, MessageSquare, Heart, Share2, BookOpen, ChevronRight, User, Calendar, Lock, Unlock, Coins } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Series, Chapter } from '../types';
-
 import { getProxiedImageUrl } from '../utils/imageUtils';
+import { LoginModal } from '../components/LoginModal';
 
 export const SeriesDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -24,6 +21,7 @@ export const SeriesDetail: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'chapters' | 'comments'>('chapters');
   const [isFavorite, setIsFavorite] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -37,19 +35,29 @@ export const SeriesDetail: React.FC = () => {
   }, [profile, series]);
 
   const toggleFavorite = async () => {
-    if (!user || !series) {
+    if (!user || !series || !profile) {
       showToast("Please login to add to library");
       return;
     }
-    const userRef = doc(db, 'users', user.uid);
+    
+    let newFavorites = [...(profile.favorites || [])];
     if (isFavorite) {
-      await updateDoc(userRef, { favorites: arrayRemove(series.id) })
-        .catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
-      setIsFavorite(false);
+      newFavorites = newFavorites.filter(id => id !== series.id);
     } else {
-      await updateDoc(userRef, { favorites: arrayUnion(series.id) })
-        .catch(e => handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`));
-      setIsFavorite(true);
+      newFavorites.push(series.id);
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ favorites: newFavorites })
+        .eq('uid', user.id);
+      
+      if (error) throw error;
+      setIsFavorite(!isFavorite);
+    } catch (error: any) {
+      console.error('Error updating favorites:', error);
+      showToast("Failed to update library");
     }
   };
 
@@ -70,46 +78,82 @@ export const SeriesDetail: React.FC = () => {
     }
   };
 
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error: any) {
-      console.error("Login failed:", error);
-      showToast("Login failed: " + error.message);
-    }
+  const handleLogin = () => {
+    setIsLoginModalOpen(true);
   };
 
   useEffect(() => {
     if (!slug) return;
 
-    const seriesQuery = query(collection(db, 'series'), where('slug', '==', slug));
-    const unsubscribeSeries = onSnapshot(seriesQuery, (snapshot) => {
-      if (!snapshot.empty) {
-        const doc = snapshot.docs[0];
-        setSeries({ id: doc.id, ...doc.data() } as Series);
+    const fetchSeries = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('series')
+          .select('*')
+          .eq('slug', slug)
+          .single();
+        
+        if (error) throw error;
+        setSeries(data as Series);
+      } catch (error) {
+        console.error('Error fetching series:', error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'series'));
+    };
 
-    return () => unsubscribeSeries();
+    fetchSeries();
+
+    // Real-time subscription
+    const channel = supabase
+      .channel(`series_${slug}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'series', filter: `slug=eq.${slug}` }, (payload) => {
+        setSeries(payload.new as Series);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [slug]);
 
   useEffect(() => {
     if (!series) return;
 
-    const chaptersQuery = query(collection(db, `series/${series.id}/chapters`), orderBy('chapterNumber', 'desc'));
-    const unsubscribeChapters = onSnapshot(chaptersQuery, (snapshot) => {
-      setChapters(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chapter)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `series/${series.id}/chapters`));
+    const fetchChaptersAndComments = async () => {
+      try {
+        const { data: chaptersData } = await supabase
+          .from('chapters')
+          .select('*')
+          .eq('seriesId', series.id)
+          .order('chapterNumber', { ascending: false });
+        
+        if (chaptersData) setChapters(chaptersData as Chapter[]);
 
-    const commentsQuery = query(collection(db, 'comments'), where('seriesId', '==', series.id));
-    const unsubscribeComments = onSnapshot(commentsQuery, (snapshot) => {
-      setCommentsCount(snapshot.docs.filter(doc => !doc.data().chapterId).length);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'comments'));
+        const { count } = await supabase
+          .from('comments')
+          .select('*', { count: 'exact', head: true })
+          .eq('seriesId', series.id)
+          .is('chapterId', null);
+        
+        setCommentsCount(count || 0);
+      } catch (error) {
+        console.error('Error fetching chapters/comments:', error);
+      }
+    };
+
+    fetchChaptersAndComments();
+
+    // Real-time for chapters
+    const chaptersChannel = supabase
+      .channel(`chapters_${series.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chapters', filter: `seriesId=eq.${series.id}` }, () => {
+        fetchChaptersAndComments();
+      })
+      .subscribe();
 
     return () => {
-      unsubscribeChapters();
-      unsubscribeComments();
+      supabase.removeChannel(chaptersChannel);
     };
   }, [series]);
 
@@ -118,6 +162,7 @@ export const SeriesDetail: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white pb-20 selection:bg-emerald-500 selection:text-black">
+      <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
       <div className="atmosphere" />
       
       {/* Immersive Header */}
@@ -143,7 +188,7 @@ export const SeriesDetail: React.FC = () => {
                 className="relative group shrink-0"
               >
                 <div className="absolute -inset-1 bg-gradient-to-b from-emerald-500 to-blue-500 rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
-                <div className="relative w-40 sm:w-64 aspect-[2/3] rounded-[2rem] overflow-hidden shadow-2xl border border-white/10">
+                <div className="relative w-40 sm:w-56 md:w-64 aspect-[2/3] rounded-[2rem] overflow-hidden shadow-2xl border border-white/10">
                   <img
                     src={getProxiedImageUrl(series.coverImage)}
                     alt={series.title}
@@ -208,25 +253,28 @@ export const SeriesDetail: React.FC = () => {
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-12">
           {/* Action Buttons */}
-          <div className="flex flex-wrap gap-3 sm:gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <button
               onClick={() => chapters.length > 0 && navigate(`/series/${series.slug}/${chapters[chapters.length - 1].chapterNumber}`)}
-              className="m3-button-primary flex-1 sm:flex-none py-3 sm:py-4 px-6 sm:px-8 text-xs sm:text-sm"
+              className="m3-button-primary flex-1 py-4 px-8 text-sm"
             >
-              <BookOpen className="w-4 h-4" /> Read First
+              <BookOpen className="w-4 h-4" /> Start Reading
             </button>
-            <button 
-              onClick={toggleFavorite}
-              className={`flex-1 sm:flex-none py-3 sm:py-4 px-6 sm:px-8 text-xs sm:text-sm transition-all ${isFavorite ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 rounded-2xl font-black uppercase tracking-widest' : 'm3-button-secondary'}`}
-            >
-              <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} /> {isFavorite ? 'In Library' : 'Library'}
-            </button>
-            <button 
-              onClick={handleShare}
-              className="p-3 sm:p-4 bg-zinc-900 border border-white/5 rounded-full hover:bg-zinc-800 transition-colors"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
+            <div className="flex gap-3 sm:gap-4">
+              <button 
+                onClick={toggleFavorite}
+                className={`flex-1 sm:flex-none py-4 px-8 text-sm transition-all flex items-center justify-center gap-2 ${isFavorite ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 rounded-2xl font-black uppercase tracking-widest' : 'm3-button-secondary'}`}
+              >
+                <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} /> 
+                <span className="sm:hidden lg:inline">{isFavorite ? 'In Library' : 'Library'}</span>
+              </button>
+              <button 
+                onClick={handleShare}
+                className="p-4 bg-zinc-900 border border-white/5 rounded-2xl hover:bg-zinc-800 transition-colors flex items-center justify-center"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Tabs */}
@@ -268,7 +316,7 @@ export const SeriesDetail: React.FC = () => {
                           {chapter.title || `Chapter ${chapter.chapterNumber}`}
                         </h3>
                         <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5 sm:mt-1">
-                          {chapter.publishDate instanceof Timestamp ? format(chapter.publishDate.toDate(), 'MMM dd, yyyy') : 'Recently'}
+                          {chapter.publishDate ? format(new Date(chapter.publishDate), 'MMM dd, yyyy') : 'Recently'}
                         </p>
                       </div>
                     </div>

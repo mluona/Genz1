@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, where } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestore';
+import { supabase } from '../supabase';
 import { Series, SeriesType } from '../types';
 import { SeriesCard } from '../components/SeriesCard';
 import { Search, Filter, LayoutGrid, List } from 'lucide-react';
@@ -22,12 +20,32 @@ export const Library: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   useEffect(() => {
-    const q = query(collection(db, 'series'), orderBy('title', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setSeriesList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Series)));
+    const fetchSeries = async () => {
+      const { data, error } = await supabase
+        .from('series')
+        .select('*')
+        .order('title', { ascending: true });
+      
+      if (error) {
+        console.error("Error fetching series:", error);
+        return;
+      }
+      setSeriesList((data as Series[]) || []);
       setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'series'));
-    return () => unsubscribe();
+    };
+
+    fetchSeries();
+
+    const channel = supabase
+      .channel('library_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'series' }, () => {
+        fetchSeries();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const filteredSeries = seriesList.filter(series => {

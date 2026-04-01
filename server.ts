@@ -736,7 +736,7 @@ const app = express();
 
       const accessKeyId = process.env.STORJ_ACCESS_KEY_ID;
       const secretAccessKey = process.env.STORJ_SECRET_ACCESS_KEY;
-      const bucketName = process.env.STORJ_BUCKET_NAME;
+      const bucketName = process.env.STORJ_BUCKET_NAME?.toLowerCase();
       const endpoint = process.env.STORJ_ENDPOINT;
       const publicUrl = process.env.STORJ_PUBLIC_URL;
 
@@ -750,10 +750,11 @@ const app = express();
       const s3 = new S3Client({
         region: "auto",
         endpoint: endpoint,
+        forcePathStyle: true,
         credentials: { accessKeyId, secretAccessKey },
       });
 
-      const key = `manga/${Date.now()}-${filename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const key = `manga/${Date.now()}-${filename.replace(/[^a-zA-Z0-9./-]/g, '_')}`;
       const command = new PutObjectCommand({ Bucket: bucketName, Key: key, ContentType: contentType });
       const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
       const url = `${publicUrl.replace(/\/$/, '')}/${key}`;
@@ -774,7 +775,7 @@ const app = express();
 
       const accessKeyId = process.env.STORJ_ACCESS_KEY_ID;
       const secretAccessKey = process.env.STORJ_SECRET_ACCESS_KEY;
-      const bucketName = process.env.STORJ_BUCKET_NAME;
+      const bucketName = process.env.STORJ_BUCKET_NAME?.toLowerCase();
       const endpoint = process.env.STORJ_ENDPOINT;
       const publicUrl = process.env.STORJ_PUBLIC_URL;
 
@@ -788,11 +789,12 @@ const app = express();
       const s3 = new S3Client({
         region: "auto",
         endpoint: endpoint,
+        forcePathStyle: true,
         credentials: { accessKeyId, secretAccessKey },
       });
 
       const results = await Promise.all(files.map(async (f: any) => {
-        const key = `manga/${Date.now()}-${f.filename.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const key = `manga/${Date.now()}-${f.filename.replace(/[^a-zA-Z0-9./-]/g, '_')}`;
         const command = new PutObjectCommand({ Bucket: bucketName, Key: key, ContentType: f.contentType });
         const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
         const url = `${publicUrl.replace(/\/$/, '')}/${key}`;
@@ -816,7 +818,7 @@ const app = express();
 
       const accessKeyId = process.env.STORJ_ACCESS_KEY_ID;
       const secretAccessKey = process.env.STORJ_SECRET_ACCESS_KEY;
-      const bucketName = process.env.STORJ_BUCKET_NAME;
+      const bucketName = process.env.STORJ_BUCKET_NAME?.toLowerCase();
       const endpoint = process.env.STORJ_ENDPOINT;
 
       if (!accessKeyId || !secretAccessKey || !bucketName || !endpoint) {
@@ -839,8 +841,10 @@ const app = express();
       try {
         const parsedUrl = new URL(url);
         let pathname = parsedUrl.pathname;
-        if (pathname.startsWith(`/${bucketName}/`)) {
-          key = pathname.substring(bucketName.length + 2);
+        
+        // Handle link.storjshare.io format: /s/access_grant/bucket_name/key
+        if (pathname.includes(`/${bucketName}/`)) {
+          key = pathname.split(`/${bucketName}/`).slice(1).join(`/${bucketName}/`);
         } else if (pathname.startsWith('/')) {
           key = pathname.substring(1);
         }
@@ -871,7 +875,7 @@ const app = express();
 
       const accessKeyId = process.env.STORJ_ACCESS_KEY_ID;
       const secretAccessKey = process.env.STORJ_SECRET_ACCESS_KEY;
-      const bucketName = process.env.STORJ_BUCKET_NAME;
+      const bucketName = process.env.STORJ_BUCKET_NAME?.toLowerCase();
       const endpoint = process.env.STORJ_ENDPOINT;
 
       if (!accessKeyId || !secretAccessKey || !bucketName || !endpoint) {
@@ -884,9 +888,10 @@ const app = express();
       try {
         const parsedUrl = new URL(url);
         let pathname = parsedUrl.pathname;
-        // If the URL contains the bucket name, strip it to get the key
-        if (pathname.startsWith(`/${bucketName}/`)) {
-          key = pathname.substring(bucketName.length + 2);
+        
+        // Handle link.storjshare.io format: /s/access_grant/bucket_name/key
+        if (pathname.includes(`/${bucketName}/`)) {
+          key = pathname.split(`/${bucketName}/`).slice(1).join(`/${bucketName}/`);
         } else if (pathname.startsWith('/')) {
           key = pathname.substring(1);
         }

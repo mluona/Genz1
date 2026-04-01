@@ -3,8 +3,7 @@ import { Link } from 'react-router-dom';
 import { Star, Eye, Lock } from 'lucide-react';
 import { Series, Chapter } from '../types';
 import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 
 import { getProxiedImageUrl } from '../utils/imageUtils';
 
@@ -18,14 +17,15 @@ export const RecentlyUpdatedCard: React.FC<Props> = ({ series }) => {
   useEffect(() => {
     const fetchChapters = async () => {
       try {
-        const q = query(
-          collection(db, `series/${series.id}/chapters`),
-          orderBy('chapterNumber', 'desc'),
-          limit(3)
-        );
-        const snapshot = await getDocs(q);
-        const fetchedChapters = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chapter));
-        setChapters(fetchedChapters);
+        const { data, error } = await supabase
+          .from('chapters')
+          .select('*')
+          .eq('seriesId', series.id)
+          .order('chapterNumber', { ascending: false })
+          .limit(3);
+        
+        if (error) throw error;
+        setChapters((data as Chapter[]) || []);
       } catch (error) {
         console.error("Error fetching chapters for series", series.id, error);
       }
@@ -34,7 +34,8 @@ export const RecentlyUpdatedCard: React.FC<Props> = ({ series }) => {
     fetchChapters();
   }, [series.id]);
 
-  const formatChapterDate = (date: Date) => {
+  const formatChapterDate = (dateStr: string) => {
+    const date = new Date(dateStr);
     const daysDiff = differenceInDays(new Date(), date);
     if (daysDiff > 30) {
       return format(date, 'MMM d, yyyy');
@@ -98,7 +99,7 @@ export const RecentlyUpdatedCard: React.FC<Props> = ({ series }) => {
               {chapter.isPremium && <Lock className="w-3 h-3 text-amber-500" />}
             </span>
             <span className="text-[10px] font-medium text-zinc-500 whitespace-nowrap">
-              {formatChapterDate(chapter.publishDate.toDate())}
+              {formatChapterDate(chapter.publishDate)}
             </span>
           </Link>
         ))}

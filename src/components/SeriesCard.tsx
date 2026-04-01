@@ -75,7 +75,7 @@ export const SeriesCard: React.FC<Props> = ({ series, compact = false }) => {
         </h3>
         <div className="flex items-center gap-2 text-[10px] font-medium text-zinc-500 uppercase tracking-widest">
           <Clock className="w-3 h-3" />
-          {formatDistanceToNow(series.lastUpdated.toDate(), { addSuffix: true })}
+          {formatDistanceToNow(new Date(series.lastUpdated), { addSuffix: true })}
         </div>
       </div>
     </Link>

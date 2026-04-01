@@ -15,6 +15,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1013.0",
     "@google/genai": "^1.46.0",
     "@paypal/react-paypal-js": "^9.0.2",
+    "@supabase/supabase-js": "^2.100.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/jszip": "^3.4.0",
     "@vitejs/plugin-react": "^5.0.4",

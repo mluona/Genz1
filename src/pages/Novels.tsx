@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, orderBy, where } from 'firebase/firestore';
-import { db } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestore';
+import { supabase } from '../supabase';
 import { Series } from '../types';
 import { SeriesCard } from '../components/SeriesCard';
 import { BookOpen, Search, Filter } from 'lucide-react';
@@ -13,18 +11,38 @@ export const Novels: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'series'), 
-      where('type', '==', 'Novel'),
-      orderBy('lastUpdated', 'desc')
-    );
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setNovels(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Series)));
+    const fetchNovels = async () => {
+      const { data, error } = await supabase
+        .from('series')
+        .select('*')
+        .eq('type', 'Novel')
+        .order('lastUpdated', { ascending: false });
+      
+      if (error) {
+        console.error("Error fetching novels:", error);
+        return;
+      }
+      setNovels((data as Series[]) || []);
       setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'series'));
-    
-    return () => unsubscribe();
+    };
+
+    fetchNovels();
+
+    const channel = supabase
+      .channel('novels_changes')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'series',
+        filter: 'type=eq.Novel'
+      }, () => {
+        fetchNovels();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const filteredNovels = novels.filter(novel => 

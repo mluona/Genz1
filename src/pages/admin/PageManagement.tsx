@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { supabase } from '../../supabase';
 import { FileText, Plus, Edit2, Trash2, X, Globe } from 'lucide-react';
 
 export const PageManagement: React.FC = () => {
@@ -13,31 +12,73 @@ export const PageManagement: React.FC = () => {
     content: '',
   });
 
+  const fetchPages = async () => {
+    const { data, error } = await supabase
+      .from('static_pages')
+      .select('*')
+      .order('lastUpdated', { ascending: false });
+    
+    if (error) {
+      console.error("Error fetching pages:", error);
+      return;
+    }
+    setPages(data || []);
+  };
+
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'pages'), (snapshot) => {
-      setPages(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsubscribe();
+    fetchPages();
+
+    const channel = supabase
+      .channel('static_pages_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'static_pages' }, () => {
+        fetchPages();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const data = {
       ...formData,
-      lastUpdated: Timestamp.now(),
+      lastUpdated: new Date().toISOString(),
     };
 
     try {
       if (editingPage) {
-        await updateDoc(doc(db, 'pages', editingPage.id), data);
+        const { error } = await supabase
+          .from('static_pages')
+          .update(data)
+          .eq('id', editingPage.id);
+        if (error) throw error;
       } else {
-        await addDoc(collection(db, 'pages'), data);
+        const { error } = await supabase
+          .from('static_pages')
+          .insert([data]);
+        if (error) throw error;
       }
       setIsModalOpen(false);
       setEditingPage(null);
       setFormData({ title: '', slug: '', content: '' });
     } catch (error) {
       console.error("Error saving page:", error);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this page?')) {
+      try {
+        const { error } = await supabase
+          .from('static_pages')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+      } catch (error) {
+        console.error("Error deleting page:", error);
+      }
     }
   };
 
@@ -65,13 +106,13 @@ export const PageManagement: React.FC = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button 
-                  onClick={() => { setEditingPage(page); setFormData(page); setIsModalOpen(true); }}
+                  onClick={() => { setEditingPage(page); setFormData({ title: page.title, slug: page.slug, content: page.content }); setIsModalOpen(true); }}
                   className="p-2 text-zinc-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg"
                 >
                   <Edit2 className="w-4 h-4" />
                 </button>
                 <button 
-                  onClick={() => deleteDoc(doc(db, 'pages', page.id))}
+                  onClick={() => handleDelete(page.id)}
                   className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
                 >
                   <Trash2 className="w-4 h-4" />

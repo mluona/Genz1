@@ -30,8 +30,12 @@ export class ErrorBoundary extends Component<Props, State> {
       try {
         // Check if it's a Firestore permission error (JSON string)
         const parsed = JSON.parse(this.state.error?.message || "");
-        if (parsed.error && parsed.error.includes("insufficient permissions")) {
-          errorMessage = "You don't have permission to access this data. Please check if you are logged in as an admin.";
+        if (parsed.error) {
+          if (parsed.error.includes("insufficient permissions")) {
+            errorMessage = "You don't have permission to access this data. Please check if you are logged in as an admin.";
+          } else if (parsed.error.includes("client is offline")) {
+            errorMessage = "Could not connect to the database. This usually means the Firebase configuration (Project ID or Database ID) is incorrect for this app instance.";
+          }
         }
       } catch (e) {
         // Not a JSON error, use default

@@ -1,4 +1,5 @@
-import { Timestamp } from 'firebase/firestore';
+// Supabase uses ISO strings for timestamps
+export type Timestamp = string;
 
 export type SeriesType = 'Manga' | 'Manhwa' | 'Novel';
 export type SeriesStatus = 'Ongoing' | 'Completed' | 'Hiatus' | 'Dropped';
@@ -42,7 +43,7 @@ export interface Chapter {
 }
 
 export interface UserProfile {
-  uid: string;
+  id: string;
   username: string;
   email: string;
   bio: string;

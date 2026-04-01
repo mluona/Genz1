@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, deleteDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
-import { handleFirestoreError, OperationType } from '../utils/firestore';
+import { supabase } from '../supabase';
 import { Comment } from '../types';
-import { useAuthState } from 'react-firebase-hooks/auth';
+import { useAuth } from '../context/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import { Heart, MessageSquare, AlertTriangle, Image as ImageIcon, Pin, MoreVertical, Trash2, Smile, ThumbsUp, Flame, Laugh } from 'lucide-react';
+import { LoginModal } from './LoginModal';
 
 const REACTIONS = [
   { icon: ThumbsUp, label: '👍' },
@@ -21,68 +20,96 @@ interface CommentsSectionProps {
 }
 
 export default function CommentsSection({ seriesId, chapterId, isAdmin }: CommentsSectionProps) {
-  const [user] = useAuthState(auth);
+  const { user, profile } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isSpoiler, setIsSpoiler] = useState(false);
   const [imageUrl, setImageUrl] = useState('');
   const [showImageInput, setShowImageInput] = useState(false);
   const [revealedSpoilers, setRevealedSpoilers] = useState<Set<string>>(new Set());
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
-  useEffect(() => {
-    let q = query(
-      collection(db, 'comments'),
-      where('seriesId', '==', seriesId)
-    );
-    
-    if (chapterId) {
-      q = query(q, where('chapterId', '==', chapterId));
-    }
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment));
+  const fetchComments = async () => {
+    try {
+      let query = supabase
+        .from('comments')
+        .select('*')
+        .eq('seriesId', seriesId);
       
-      // Filter manually if chapterId is not provided to get series-level comments
-      if (!chapterId) {
-        docs = docs.filter(c => !c.chapterId);
+      if (chapterId) {
+        query = query.eq('chapterId', chapterId);
+      } else {
+        query = query.is('chapterId', null);
       }
 
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      
+      let docs = (data as Comment[]) || [];
+      
       // Sort by pinned first, then by total reactions, then by timestamp
       docs.sort((a, b) => {
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
         
-        const aReactions = Object.values(a.reactions || {}).reduce((sum, arr) => sum + arr.length, 0);
-        const bReactions = Object.values(b.reactions || {}).reduce((sum, arr) => sum + arr.length, 0);
+        const aReactions = Object.values(a.reactions || {}).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+        const bReactions = Object.values(b.reactions || {}).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
         
         if (bReactions !== aReactions) return bReactions - aReactions;
-        return (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0);
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       });
 
       setComments(docs);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'comments'));
+    } catch (error) {
+      console.error("Error fetching comments:", error);
+    }
+  };
 
-    return () => unsubscribe();
+  useEffect(() => {
+    fetchComments();
+
+    // Real-time subscription
+    const channel = supabase
+      .channel(`comments_${seriesId}_${chapterId || 'series'}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'comments',
+        filter: `seriesId=eq.${seriesId}`
+      }, () => {
+        fetchComments();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [seriesId, chapterId]);
 
   const handlePostComment = async () => {
-    if (!user || !newComment.trim()) return;
+    if (!user || !newComment.trim() || !profile) return;
 
     try {
-      await addDoc(collection(db, 'comments'), {
-        seriesId,
-        chapterId: chapterId || null,
-        userId: user.uid,
-        username: user.displayName || 'Anonymous',
-        userAvatar: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
-        text: newComment.trim(),
-        likes: 0,
-        timestamp: serverTimestamp(),
-        isSpoiler,
-        imageUrl: imageUrl.trim() || null,
-        reactions: {},
-        isPinned: false
-      }).catch(e => handleFirestoreError(e, OperationType.CREATE, 'comments'));
+      const { error } = await supabase
+        .from('comments')
+        .insert([{
+          seriesId,
+          chapterId: chapterId || null,
+          userId: user.id,
+          username: profile.username || 'Anonymous',
+          userAvatar: profile.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+          text: newComment.trim(),
+          likes: 0,
+          timestamp: new Date().toISOString(),
+          isSpoiler,
+          imageUrl: imageUrl.trim() || null,
+          reactions: {},
+          isPinned: false
+        }]);
+
+      if (error) throw error;
+      
       setNewComment('');
       setIsSpoiler(false);
       setImageUrl('');
@@ -93,26 +120,32 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
   };
 
   const handleReaction = async (commentId: string, reaction: string, currentReactions: Record<string, string[]>) => {
-    if (!user) return;
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
     
     try {
       const userReactions = currentReactions[reaction] || [];
-      const hasReacted = userReactions.includes(user.uid);
+      const hasReacted = userReactions.includes(user.id);
       
       let newReactions = { ...currentReactions };
       
       if (hasReacted) {
-        newReactions[reaction] = userReactions.filter(uid => uid !== user.uid);
+        newReactions[reaction] = userReactions.filter(uid => uid !== user.id);
         if (newReactions[reaction].length === 0) {
           delete newReactions[reaction];
         }
       } else {
-        newReactions[reaction] = [...userReactions, user.uid];
+        newReactions[reaction] = [...userReactions, user.id];
       }
 
-      await updateDoc(doc(db, 'comments', commentId), {
-        reactions: newReactions
-      }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `comments/${commentId}`));
+      const { error } = await supabase
+        .from('comments')
+        .update({ reactions: newReactions })
+        .eq('id', commentId);
+
+      if (error) throw error;
     } catch (error) {
       console.error("Error updating reaction:", error);
     }
@@ -121,9 +154,12 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
   const handlePin = async (commentId: string, isPinned: boolean) => {
     if (!isAdmin) return;
     try {
-      await updateDoc(doc(db, 'comments', commentId), {
-        isPinned: !isPinned
-      }).catch(e => handleFirestoreError(e, OperationType.UPDATE, `comments/${commentId}`));
+      const { error } = await supabase
+        .from('comments')
+        .update({ isPinned: !isPinned })
+        .eq('id', commentId);
+      
+      if (error) throw error;
     } catch (error) {
       console.error("Error pinning comment:", error);
     }
@@ -133,8 +169,12 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
     if (!isAdmin) return;
     if (!window.confirm('Are you sure you want to delete this comment?')) return;
     try {
-      await deleteDoc(doc(db, 'comments', commentId))
-        .catch(e => handleFirestoreError(e, OperationType.DELETE, `comments/${commentId}`));
+      const { error } = await supabase
+        .from('comments')
+        .delete()
+        .eq('id', commentId);
+      
+      if (error) throw error;
     } catch (error) {
       console.error("Error deleting comment:", error);
     }
@@ -154,6 +194,7 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
 
   return (
     <div className="space-y-6">
+      <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
       <h3 className="text-xl font-black uppercase tracking-widest flex items-center gap-3">
         <MessageSquare className="w-5 h-5 text-emerald-500" />
         Comments ({comments.length})
@@ -212,7 +253,13 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
         </div>
       ) : (
         <div className="glass-panel p-6 rounded-2xl text-center">
-          <p className="text-zinc-400">Please sign in to join the discussion.</p>
+          <p className="text-zinc-400 mb-4">Please sign in to join the discussion.</p>
+          <button 
+            onClick={() => setIsLoginModalOpen(true)}
+            className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl transition-all text-sm uppercase tracking-widest"
+          >
+            Sign In
+          </button>
         </div>
       )}
 
@@ -234,7 +281,7 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
                         </span>
                       )}
                       <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">
-                        {comment.timestamp ? formatDistanceToNow(comment.timestamp.toDate(), { addSuffix: true }) : 'Just now'}
+                        {comment.timestamp ? formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true }) : 'Just now'}
                       </span>
                     </div>
                     
@@ -286,9 +333,9 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
                   <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t border-white/5">
                     <button 
                       onClick={() => handleReaction(comment.id, '👍', comment.reactions || {})}
-                      className={`text-xs font-bold flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg ${comment.reactions?.['👍']?.includes(user?.uid || '') ? 'bg-emerald-500/20 text-emerald-500' : 'text-zinc-500 hover:text-emerald-500 hover:bg-white/5'}`}
+                      className={`text-xs font-bold flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg ${comment.reactions?.['👍']?.includes(user?.id || '') ? 'bg-emerald-500/20 text-emerald-500' : 'text-zinc-500 hover:text-emerald-500 hover:bg-white/5'}`}
                     >
-                      <ThumbsUp className={`w-4 h-4 ${comment.reactions?.['👍']?.includes(user?.uid || '') ? 'fill-emerald-500/20' : ''}`} /> 
+                      <ThumbsUp className={`w-4 h-4 ${comment.reactions?.['👍']?.includes(user?.id || '') ? 'fill-emerald-500/20' : ''}`} /> 
                       {comment.reactions?.['👍']?.length || 'Like'}
                     </button>
                     
@@ -297,7 +344,7 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
                          <button 
                           key={label}
                           onClick={() => handleReaction(comment.id, label, comment.reactions || {})}
-                          className={`text-xs font-bold flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg ${comment.reactions?.[label]?.includes(user?.uid || '') ? 'bg-white/20 text-white' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
+                          className={`text-xs font-bold flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg ${comment.reactions?.[label]?.includes(user?.id || '') ? 'bg-white/20 text-white' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
                         >
                           <span className="text-sm">{label}</span>
                           {comment.reactions?.[label]?.length > 0 && <span>{comment.reactions[label].length}</span>}
