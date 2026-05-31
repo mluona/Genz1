@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Search, LogIn, User, LayoutDashboard, Menu, X, Bell, LogOut, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +15,28 @@ export const Navbar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Determine scroll direction
+      if (currentScrollY < 15) {
+        setIsHeaderVisible(true);
+      } else if (currentScrollY > lastScrollY.current) {
+        setIsHeaderVisible(false); // scrolling down
+      } else {
+        setIsHeaderVisible(true); // scrolling up
+      }
+      
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Hide Navbar on Reader page
   const isReaderPage = location.pathname.split('/').length >= 4 && location.pathname.includes('/series/');
@@ -44,7 +66,14 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[100] bg-zinc-950/40 backdrop-blur-2xl border-b border-white/5">
+    <motion.nav 
+      animate={{ 
+        y: (isHeaderVisible || isMenuOpen) ? 0 : -80,
+        opacity: (isHeaderVisible || isMenuOpen) ? 1 : 0
+      }}
+      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      className="fixed top-0 left-0 right-0 z-[100] bg-zinc-950/40 backdrop-blur-2xl border-b border-white/5"
+    >
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-14 sm:h-16">
@@ -204,6 +233,6 @@ export const Navbar: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-    </nav>
+    </motion.nav>
   );
 };

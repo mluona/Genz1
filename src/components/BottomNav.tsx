@@ -42,14 +42,14 @@ export const BottomNav: React.FC = () => {
   return (
     <motion.nav 
       animate={{ 
-        y: isVisible ? 0 : 80, 
+        y: isVisible ? 0 : 100, 
         opacity: isVisible ? 1 : 0,
-        scale: isVisible ? 1 : 0.95
+        scale: isVisible ? 1 : 0.98
       }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="sm:hidden fixed bottom-5 left-1/2 -translate-x-1/2 w-[calc(100%-2.5rem)] max-w-sm bg-zinc-900/90 backdrop-blur-xl border border-white/10 z-50 px-5 py-2.5 rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.8)]"
+      className="sm:hidden fixed bottom-0 left-0 right-0 w-full bg-zinc-950/95 backdrop-blur-xl border-t border-white/5 z-50 px-6 py-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.95)]"
     >
-      <div className="flex items-center justify-between max-w-xs mx-auto">
+      <div className="flex items-center justify-between max-w-md mx-auto">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
@@ -58,8 +58,8 @@ export const BottomNav: React.FC = () => {
               to={item.path}
               className={`flex flex-col items-center gap-0.5 transition-all duration-200 ${isActive ? 'text-emerald-500 scale-105' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-              <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-emerald-500/10' : ''}`}>
-                <item.icon className="w-5 h-5" />
+              <div className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-emerald-500/10' : ''}`}>
+                <item.icon className="w-[18px] h-[18px]" />
               </div>
               <span className="text-[9px] font-black tracking-wide">{item.label}</span>
             </Link>

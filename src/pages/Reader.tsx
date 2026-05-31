@@ -347,6 +347,27 @@ export const Reader: React.FC = () => {
             }
             
             setChapter(c);
+
+            // Increment views (Chapter and Series) for real-time analytics
+            try {
+              const prevChViews = c.views || 0;
+              await supabase
+                .from('chapters')
+                .update({ views: prevChViews + 1 })
+                .eq('id', c.id);
+
+              await supabase
+                .from('series')
+                .update({
+                  views: (s.views || 0) + 1,
+                  dailyViews: (s.dailyViews || 0) + 1,
+                  weeklyViews: (s.weeklyViews || 0) + 1,
+                  monthlyViews: (s.monthlyViews || 0) + 1
+                })
+                .eq('id', s.id);
+            } catch (vErr) {
+              console.warn("Failed to increment views:", vErr);
+            }
             
             // Save to history
             if (user && profile) {
