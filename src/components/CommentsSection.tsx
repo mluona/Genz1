@@ -195,9 +195,9 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
   return (
     <div className="space-y-6">
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
-      <h3 className="text-xl font-black uppercase tracking-widest flex items-center gap-3">
-        <MessageSquare className="w-5 h-5 text-emerald-500" />
+      <h3 className="text-xl font-black uppercase tracking-widest flex items-center gap-3 text-right">
         Comments ({comments.length})
+        <MessageSquare className="w-5 h-5 text-emerald-500" />
       </h3>
 
       {user ? (
@@ -205,8 +205,8 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
           <textarea
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
-            placeholder="What are your thoughts?"
-            className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all resize-none min-h-[100px]"
+            placeholder="اكتب تعليقك أو رأيك هنا..."
+            className="w-full bg-black/20 border border-white/10 rounded-xl p-4 text-white placeholder:text-zinc-600 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 transition-all resize-none min-h-[100px] text-right"
             dir="auto"
           />
           
@@ -215,50 +215,50 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
               type="url"
               value={imageUrl}
               onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="Paste image or GIF URL..."
-              className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50"
+              placeholder="ضع رابط الصورة أو الـ GIF هنا..."
+              className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 text-right"
             />
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white cursor-pointer transition-colors">
+          <div className="flex flex-wrap items-center justify-between gap-4 flex-row-reverse text-right">
+            <button
+              onClick={handlePostComment}
+              disabled={!newComment.trim()}
+              className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-emerald-500 text-black font-bold rounded-xl transition-all text-sm uppercase tracking-widest"
+            >
+              نشر التعليق
+            </button>
+
+            <div className="flex items-center gap-4 flex-row-reverse">
+              <label className="flex items-center gap-2 text-sm text-zinc-400 hover:text-white cursor-pointer transition-colors flex-row-reverse">
                 <input
                   type="checkbox"
                   checked={isSpoiler}
                   onChange={(e) => setIsSpoiler(e.target.checked)}
                   className="rounded border-white/10 bg-black/20 text-emerald-500 focus:ring-emerald-500/50"
                 />
-                <AlertTriangle className="w-4 h-4" />
-                Mark as Spoiler
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                يتضمن حرقاً للأحداث
               </label>
               
               <button 
                 onClick={() => setShowImageInput(!showImageInput)}
-                className={`flex items-center gap-2 text-sm transition-colors ${showImageInput || imageUrl ? 'text-emerald-500' : 'text-zinc-400 hover:text-white'}`}
+                className={`flex items-center gap-2 text-sm transition-colors flex-row-reverse ${showImageInput || imageUrl ? 'text-emerald-500' : 'text-zinc-400 hover:text-white'}`}
               >
                 <ImageIcon className="w-4 h-4" />
-                Add Image/GIF
+                إرفاق صورة/GIF
               </button>
             </div>
-            
-            <button
-              onClick={handlePostComment}
-              disabled={!newComment.trim()}
-              className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-emerald-500 text-black font-bold rounded-xl transition-all text-sm uppercase tracking-widest"
-            >
-              Post Comment
-            </button>
           </div>
         </div>
       ) : (
         <div className="glass-panel p-6 rounded-2xl text-center">
-          <p className="text-zinc-400 mb-4">Please sign in to join the discussion.</p>
+          <p className="text-zinc-400 mb-4 text-sm sm:text-base">الرجاء تسجيل الدخول للمشاركة في النقاشات والتعليقات.</p>
           <button 
             onClick={() => setIsLoginModalOpen(true)}
             className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl transition-all text-sm uppercase tracking-widest"
           >
-            Sign In
+            تسجيل الدخول
           </button>
         </div>
       )}
@@ -268,20 +268,20 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
           const isSpoilerHidden = comment.isSpoiler && !revealedSpoilers.has(comment.id);
           
           return (
-            <div key={comment.id} className={`glass-panel p-4 sm:p-6 rounded-2xl transition-all ${comment.isPinned ? 'border-emerald-500/30 bg-emerald-500/5' : ''}`}>
-              <div className="flex gap-3 sm:gap-4">
+            <div key={comment.id} className={`glass-panel p-4 sm:p-6 rounded-2xl transition-all ${comment.isPinned ? 'border-emerald-500/30 bg-emerald-500/5' : ''} text-right`}>
+              <div className="flex gap-3 sm:gap-4 flex-row-reverse">
                 <img src={comment.userAvatar || undefined} className="w-10 h-10 sm:w-12 sm:h-12 rounded-full shrink-0 border border-white/10" alt={comment.username} referrerPolicy="no-referrer" />
                 <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2 flex-row-reverse">
+                    <div className="flex items-center gap-2 flex-row-reverse">
                       <span className="font-bold text-white">{comment.username}</span>
                       {comment.isPinned && (
                         <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                          <Pin className="w-3 h-3" /> Pinned
+                          <Pin className="w-3 h-3" /> مثبت 📌
                         </span>
                       )}
-                      <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">
-                        {comment.timestamp ? formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true }) : 'Just now'}
+                      <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest font-mono">
+                        {comment.timestamp ? formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true }) : 'الآن'}
                       </span>
                     </div>
                     
@@ -302,9 +302,9 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
                       onClick={() => toggleSpoiler(comment.id)}
                       className="bg-black/40 border border-white/5 rounded-xl p-4 cursor-pointer hover:bg-black/60 transition-colors flex flex-col items-center justify-center gap-2 my-2"
                     >
-                      <AlertTriangle className="w-6 h-6 text-yellow-500" />
-                      <span className="text-sm font-bold text-zinc-300">Spoiler Content</span>
-                      <span className="text-xs text-zinc-500">Click to reveal</span>
+                      <AlertTriangle className="w-6 h-6 text-amber-500 animate-pulse" />
+                      <span className="text-sm font-bold text-zinc-300">محتوى يحتوي على حرق للأحداث</span>
+                      <span className="text-xs text-emerald-500 uppercase tracking-wider">اضغط للكشف عن المحتوى</span>
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -322,29 +322,29 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
                       {comment.isSpoiler && (
                         <button 
                           onClick={() => toggleSpoiler(comment.id)}
-                          className="text-xs text-zinc-500 hover:text-white transition-colors"
+                          className="text-xs text-zinc-500 hover:text-white transition-colors block mr-auto"
                         >
-                          Hide spoiler
+                          إخفاء الحرق
                         </button>
                       )}
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t border-white/5">
+                  <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t border-white/5 flex-row-reverse">
                     <button 
                       onClick={() => handleReaction(comment.id, '👍', comment.reactions || {})}
-                      className={`text-xs font-bold flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg ${comment.reactions?.['👍']?.includes(user?.id || '') ? 'bg-emerald-500/20 text-emerald-500' : 'text-zinc-500 hover:text-emerald-500 hover:bg-white/5'}`}
+                      className={`text-xs font-bold flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg flex-row-reverse ${comment.reactions?.['👍']?.includes(user?.id || '') ? 'bg-emerald-500/20 text-emerald-500' : 'text-zinc-500 hover:text-emerald-500 hover:bg-white/5'}`}
                     >
                       <ThumbsUp className={`w-4 h-4 ${comment.reactions?.['👍']?.includes(user?.id || '') ? 'fill-emerald-500/20' : ''}`} /> 
-                      {comment.reactions?.['👍']?.length || 'Like'}
+                      {comment.reactions?.['👍']?.length || 'إعجاب'}
                     </button>
                     
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-row-reverse">
                       {REACTIONS.slice(1).map(({ label }) => (
                          <button 
                           key={label}
                           onClick={() => handleReaction(comment.id, label, comment.reactions || {})}
-                          className={`text-xs font-bold flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg ${comment.reactions?.[label]?.includes(user?.id || '') ? 'bg-white/20 text-white' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
+                          className={`text-xs font-bold flex items-center gap-1.5 transition-colors px-2 py-1 rounded-lg flex-row-reverse ${comment.reactions?.[label]?.includes(user?.id || '') ? 'bg-white/20 text-white' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
                         >
                           <span className="text-sm">{label}</span>
                           {comment.reactions?.[label]?.length > 0 && <span>{comment.reactions[label].length}</span>}
@@ -352,7 +352,7 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
                       ))}
                     </div>
 
-                    <button className="text-xs font-bold text-zinc-500 hover:text-white transition-colors ml-auto">Reply</button>
+                    <button className="text-xs font-bold text-zinc-500 hover:text-white transition-colors mr-auto">رد</button>
                   </div>
                 </div>
               </div>
@@ -362,7 +362,7 @@ export default function CommentsSection({ seriesId, chapterId, isAdmin }: Commen
         
         {comments.length === 0 && (
           <div className="text-center text-zinc-500 text-sm py-12 glass-panel rounded-2xl">
-            No comments yet. Be the first to share your thoughts!
+            لا توجد تعليقات بعد. كن أول من يشاركنا رأيه!
           </div>
         )}
       </div>

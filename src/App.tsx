@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -16,26 +16,38 @@ import { AdminLayout } from './pages/admin/AdminLayout';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { SeriesManagement } from './pages/admin/SeriesManagement';
 import { ChapterManagement } from './pages/admin/ChapterManagement';
-import { AutoImport } from './pages/admin/AutoImport';
 import { UserManagement } from './pages/admin/UserManagement';
 import { CommentModeration } from './pages/admin/CommentModeration';
 import { PageManagement } from './pages/admin/PageManagement';
 import { CoinPackagesManagement } from './pages/admin/CoinPackagesManagement';
+import { Splash } from './components/Splash';
+import { AnimatePresence } from 'motion/react';
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
+  const handleSplashComplete = () => {
+    setShowSplash(false);
+  };
+
   return (
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
           <Router>
-            <div className="min-h-screen overflow-x-hidden bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white font-sans selection:bg-emerald-500/30 selection:text-emerald-200 transition-colors duration-300">
-            <Routes>
+            <div dir="rtl" className="min-h-screen overflow-x-hidden bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white font-sans selection:bg-emerald-500/30 selection:text-emerald-200 transition-colors duration-300">
+              <AnimatePresence mode="wait">
+                {showSplash && (
+                  <Splash key="splash" onComplete={handleSplashComplete} />
+                )}
+              </AnimatePresence>
+              
+              <Routes>
               {/* Admin Routes */}
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<AdminDashboard />} />
                 <Route path="series" element={<SeriesManagement />} />
                 <Route path="chapters" element={<ChapterManagement />} />
-                <Route path="import" element={<AutoImport />} />
                 <Route path="users" element={<UserManagement />} />
                 <Route path="comments" element={<CommentModeration />} />
                 <Route path="pages" element={<PageManagement />} />

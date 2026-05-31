@@ -32,7 +32,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           },
         });
         if (error) throw error;
-        setMessage('Check your email for the confirmation link!');
+        setMessage('تم إرسال رابط التأكيد إلى بريدك الإلكتروني! الرجاء التحقق من الرسائل الواردة.');
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -84,12 +84,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           >
             <div className="relative p-6 sm:p-10">
               <div className="flex items-center justify-between mb-8">
-                <div>
+                <div className="text-right">
                   <h2 className="text-2xl sm:text-3xl font-black tracking-tighter text-white uppercase italic leading-none">
-                    {isSignUp ? 'Join Us' : 'Welcome'}
+                    {isSignUp ? 'انضم إلينا' : 'مرحباً بك'}
                   </h2>
                   <p className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] mt-2">
-                    {isSignUp ? 'Create your GENZ account' : 'Access your library'}
+                    {isSignUp ? 'أنشئ حسابك الجديد' : 'سجّل دخولك للوصول إلى مكتبتك'}
                   </p>
                 </div>
                 <button 
@@ -122,31 +122,31 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
               <form onSubmit={handleEmailAuth} className="space-y-5">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.15em] ml-1">Email</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.15em] mr-1 block text-right">البريد الإلكتروني</label>
                   <div className="relative group">
-                    <Mail className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 group-focus-within:text-emerald-500 transition-colors" />
+                    <Mail className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 group-focus-within:text-emerald-500 transition-colors" />
                     <input
                       type="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="name@example.com"
-                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl py-3.5 sm:py-4 pl-14 pr-6 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all placeholder:text-zinc-700"
+                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl py-3.5 sm:py-4 pr-14 pl-6 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all placeholder:text-zinc-700 text-right"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.15em] ml-1">Password</label>
+                  <label className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.15em] mr-1 block text-right">كلمة المرور</label>
                   <div className="relative group">
-                    <Lock className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 group-focus-within:text-emerald-500 transition-colors" />
+                    <Lock className="absolute right-5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600 group-focus-within:text-emerald-500 transition-colors" />
                     <input
                       type="password"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl py-3.5 sm:py-4 pl-14 pr-6 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all placeholder:text-zinc-700"
+                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl py-3.5 sm:py-4 pr-14 pl-6 text-sm focus:outline-none focus:border-emerald-500/50 focus:ring-4 focus:ring-emerald-500/10 transition-all placeholder:text-zinc-700 text-right"
                     />
                   </div>
                 </div>
@@ -156,7 +156,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   disabled={loading}
                   className="w-full py-4 sm:py-5 bg-emerald-500 disabled:bg-emerald-500/50 text-black font-black rounded-2xl uppercase tracking-[0.2em] text-[10px] hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-3"
                 >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isSignUp ? 'Create Account' : 'Sign In')}
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isSignUp ? 'إنشاء حساب جديد' : 'تسجيل الدخول')}
                 </button>
               </form>
 
@@ -165,7 +165,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   <div className="w-full border-t border-white/5"></div>
                 </div>
                 <div className="relative flex justify-center text-[9px] font-black uppercase tracking-[0.3em]">
-                  <span className="bg-zinc-900 px-4 text-zinc-600">Social Connect</span>
+                  <span className="bg-zinc-900 px-4 text-zinc-600">أو عبر الحسابات الاجتماعية</span>
                 </div>
               </div>
 
@@ -174,16 +174,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 className="w-full py-4 sm:py-5 bg-white/5 border border-white/10 text-white font-black rounded-2xl uppercase tracking-[0.2em] text-[10px] hover:bg-white/10 transition-all flex items-center justify-center gap-3 group"
               >
                 <Chrome className="w-4 h-4 group-hover:text-emerald-500 transition-colors" />
-                Google Account
+                حساب جوجل
               </button>
 
               <p className="mt-8 sm:mt-10 text-center text-[10px] font-black text-zinc-500 uppercase tracking-[0.15em]">
-                {isSignUp ? 'Already a member?' : "New to GENZ?"}{' '}
+                {isSignUp ? 'هل لديك حساب بالفعل؟' : 'جديد في موقعنا؟'}{' '}
                 <button
+                  type="button"
                   onClick={() => setIsSignUp(!isSignUp)}
-                  className="text-emerald-500 hover:text-emerald-400 transition-colors underline underline-offset-4"
+                  className="text-emerald-500 hover:text-emerald-400 transition-colors underline underline-offset-4 whitespace-nowrap"
                 >
-                  {isSignUp ? 'Sign In' : 'Join Now'}
+                  {isSignUp ? 'سجّل الدخول من هنا' : 'سجّل الآن'}
                 </button>
               </p>
             </div>

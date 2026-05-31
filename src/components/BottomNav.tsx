@@ -1,40 +1,72 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Home, BookOpen, Bookmark, User } from 'lucide-react';
+import { motion } from 'motion/react';
 
 export const BottomNav: React.FC = () => {
   const location = useLocation();
+  const [isVisible, setIsVisible] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      
+      // Determine scroll direction
+      if (currentScrollY < 15) {
+        setIsVisible(true);
+      } else if (currentScrollY > lastScrollY.current) {
+        setIsVisible(false); // scrolling down
+      } else {
+        setIsVisible(true); // scrolling up
+      }
+      
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
   
   // Hide on Reader page
   const isReaderPage = location.pathname.split('/').length >= 4 && location.pathname.includes('/series/');
   if (isReaderPage) return null;
   
   const navItems = [
-    { icon: Home, label: 'Home', path: '/' },
-    { icon: BookOpen, label: 'Novels', path: '/novels' },
-    { icon: Bookmark, label: 'Library', path: '/library' },
-    { icon: User, label: 'Profile', path: '/profile' },
+    { icon: Home, label: 'الرئيسية', path: '/' },
+    { icon: BookOpen, label: 'الروايات', path: '/novels' },
+    { icon: Bookmark, label: 'المكتبة', path: '/library' },
+    { icon: User, label: 'الحساب', path: '/profile' },
   ];
 
   return (
-    <nav className="sm:hidden fixed bottom-0 left-0 right-0 bg-zinc-900/80 backdrop-blur-xl border-t border-white/5 z-50 px-6 py-3">
-      <div className="flex items-center justify-between max-w-md mx-auto">
+    <motion.nav 
+      animate={{ 
+        y: isVisible ? 0 : 80, 
+        opacity: isVisible ? 1 : 0,
+        scale: isVisible ? 1 : 0.95
+      }}
+      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      className="sm:hidden fixed bottom-5 left-1/2 -translate-x-1/2 w-[calc(100%-2.5rem)] max-w-sm bg-zinc-900/90 backdrop-blur-xl border border-white/10 z-50 px-5 py-2.5 rounded-2xl shadow-[0_15px_35px_rgba(0,0,0,0.8)]"
+    >
+      <div className="flex items-center justify-between max-w-xs mx-auto">
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
           return (
             <Link 
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center gap-1 transition-all duration-200 ${isActive ? 'text-emerald-500' : 'text-zinc-500'}`}
+              className={`flex flex-col items-center gap-0.5 transition-all duration-200 ${isActive ? 'text-emerald-500 scale-105' : 'text-zinc-500 hover:text-zinc-300'}`}
             >
-              <div className={`p-1 rounded-xl transition-colors ${isActive ? 'bg-emerald-500/10' : ''}`}>
-                <item.icon className={`w-6 h-6 ${isActive ? 'fill-current' : ''}`} />
+              <div className={`p-1.5 rounded-xl transition-colors ${isActive ? 'bg-emerald-500/10' : ''}`}>
+                <item.icon className="w-5 h-5" />
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-widest">{item.label}</span>
+              <span className="text-[9px] font-black tracking-wide">{item.label}</span>
             </Link>
           );
         })}
       </div>
-    </nav>
+    </motion.nav>
   );
 };
+

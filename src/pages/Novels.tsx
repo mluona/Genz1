@@ -69,8 +69,8 @@ export const Novels: React.FC = () => {
             <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-500/20">
               <BookOpen className="w-8 h-8 text-black" />
             </div>
-            <h1 className="text-4xl sm:text-6xl font-black tracking-tighter uppercase italic text-white">Light Novels</h1>
-            <p className="text-zinc-400 font-medium max-w-lg mx-auto uppercase tracking-widest text-[10px]">Immerse yourself in epic stories and legendary adventures</p>
+            <h1 className="text-4xl sm:text-6xl font-black tracking-tighter uppercase italic text-white">الروايات الخفيفة</h1>
+            <p className="text-zinc-400 font-medium max-w-lg mx-auto uppercase tracking-widest text-[10px]">انغمس في قصص ملحمية ومغامرات أسطورية شيقة</p>
           </div>
         </div>
 
@@ -79,16 +79,16 @@ export const Novels: React.FC = () => {
           <div className="relative w-full sm:w-96 group">
             <input 
               type="text" 
-              placeholder="Search novels..." 
+              placeholder="البحث عن الروايات..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-zinc-900/50 border border-white/5 rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-zinc-900 transition-all"
+              className="w-full bg-zinc-900/50 border border-white/5 rounded-2xl py-4 pr-12 pl-4 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-zinc-900 transition-all text-right"
             />
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-emerald-500 transition-colors" />
+            <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 group-focus-within:text-emerald-500 transition-colors" />
           </div>
           
           <div className="flex items-center gap-4 text-zinc-500 text-[10px] font-black uppercase tracking-widest">
-            <span>{filteredNovels.length} Novels Found</span>
+            <span>تم العثور على {filteredNovels.length} رواية</span>
           </div>
         </div>
 
@@ -105,7 +105,7 @@ export const Novels: React.FC = () => {
           </div>
         ) : (
           <div className="text-center py-40">
-            <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">No novels found matching your search.</p>
+            <p className="text-zinc-500 font-bold uppercase tracking-widest text-xs">لم يتم العثور على أي روايات تطابق بحثك.</p>
           </div>
         )}
       </div>

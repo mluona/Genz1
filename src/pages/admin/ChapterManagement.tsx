@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../supabase';
 import { Series, Chapter } from '../../types';
 import { compressImage, splitAndCompressImage } from '../../utils/imageCompression';
-import { uploadToStorj } from '../../utils/storjUpload';
+import { uploadToLocal } from '../../utils/localUpload';
 import { 
   Plus, Edit2, Trash2, X, Upload, Image as ImageIcon, 
   Layers, Loader2, FileArchive, AlertCircle, ArrowUp, 
@@ -64,47 +64,10 @@ export const ChapterManagement: React.FC = () => {
   const [isSmartImportModalOpen, setIsSmartImportModalOpen] = useState(false);
   const [isSmartImporting, setIsSmartImporting] = useState(false);
   const [smartImportLog, setSmartImportLog] = useState<string[]>([]);
-  const [importType, setImportType] = useState<'zip' | 'url'>('zip');
   
-  const [isUrlImportModalOpen, setIsUrlImportModalOpen] = useState(false);
-  const [urlImportInput, setUrlImportInput] = useState('');
-  const [urlImportSourceId, setUrlImportSourceId] = useState('');
-  const [isUrlImporting, setIsUrlImporting] = useState(false);
-  const [sources, setSources] = useState<any[]>([]);
-  const cancelImportRef = useRef(false);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
   const smartZipInputRef = useRef<HTMLInputElement>(null);
-
-  // Fetch Sources
-  useEffect(() => {
-    const fetchSources = async () => {
-      const { data, error } = await supabase
-        .from('import_sources')
-        .select('*')
-        .order('createdAt', { ascending: false });
-      
-      if (error) {
-        console.error("Error fetching sources:", error);
-        return;
-      }
-      setSources(data || []);
-    };
-
-    fetchSources();
-
-    const channel = supabase
-      .channel('import_sources_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'import_sources' }, () => {
-        fetchSources();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
 
   // Fetch Series
   useEffect(() => {
@@ -346,233 +309,12 @@ export const ChapterManagement: React.FC = () => {
     }
   };
 
-  const handleUrlImport = async () => {
-    if (!urlImportInput.trim() || !selectedSeries) return;
-    
-    setIsUrlImporting(true);
-    setImportType('url');
-    cancelImportRef.current = false;
-    setSmartImportLog([`[${new Date().toLocaleTimeString()}] Starting URL Import for: ${urlImportInput}`]);
-    setIsSmartImportModalOpen(true);
-    setIsUrlImportModalOpen(false);
-    
-    try {
-      const selectedSource = sources.find(s => s.id === urlImportSourceId);
-      const sourceCookies = selectedSource?.cookies || '';
-      const sourceUserAgent = selectedSource?.userAgent || '';
-      
-      const response = await fetch(`/api/scrape/auto?url=${encodeURIComponent(urlImportInput.trim())}&cookies=${encodeURIComponent(sourceCookies)}&userAgent=${encodeURIComponent(sourceUserAgent)}`);
-      const data = await response.json();
-      
-      if (!response.ok) throw new Error(data.details || data.error || `Server returned ${response.status}`);
-      
-      let chaptersToImport = [];
-      
-      if (data.type === 'chapter') {
-        chaptersToImport.push(data);
-        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Found single chapter.`]);
-      } else if (data.type === 'series' && data.chapters) {
-        chaptersToImport = data.chapters;
-        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Found series with ${chaptersToImport.length} chapters.`]);
-      } else {
-        throw new Error(`Unsupported URL type: ${data.type}. Please provide a direct chapter or series URL.`);
-      }
-      
-      const { data: existingChaptersData, error: chaptersError } = await supabase
-        .from('chapters')
-        .select('chapterNumber')
-        .eq('seriesId', selectedSeries.id);
-      
-      if (chaptersError) throw chaptersError;
-      const existingChapters = (existingChaptersData || []).map(d => d.chapterNumber);
-      
-      const missingChapters = chaptersToImport.filter(ch => {
-        let chapterNumber = existingChapters.length > 0 ? Math.max(...existingChapters) + 1 : 1;
-        if (ch.title) {
-          const numMatch = ch.title.match(/(\d+(\.\d+)?)/);
-          if (numMatch) chapterNumber = parseFloat(numMatch[1]);
-        }
-        return !existingChapters.includes(chapterNumber);
-      });
-
-      setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Found ${missingChapters.length} new chapters to import.`]);
-
-      for (const ch of chaptersToImport) {
-        if (cancelImportRef.current) {
-          setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Import cancelled by user.`]);
-          break;
-        }
-
-        // If it's a series import, we need to fetch chapter details first
-        let chData = ch;
-        if (data.type === 'series') {
-          setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Fetching content for: ${ch.title}...`]);
-          const chRes = await fetch(`/api/scrape/auto?url=${encodeURIComponent(ch.url)}&cookies=${encodeURIComponent(data.cookies || sourceCookies)}&userAgent=${encodeURIComponent(sourceUserAgent)}`);
-          chData = await chRes.json();
-          if (!chRes.ok) {
-            setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error fetching ${ch.title}: ${chData.details || chRes.statusText}`]);
-            continue;
-          }
-        }
-        
-        const isNovel = selectedSeries.type === 'Novel';
-        
-        if (isNovel) {
-          if (!chData.content) {
-            setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] No text content found for ${chData.title || 'Chapter'}. Skipping.`]);
-            continue;
-          }
-        } else {
-          if (!chData.images || chData.images.length === 0) {
-            setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] No images found for ${chData.title || 'Chapter'}. Skipping.`]);
-            continue;
-          }
-        }
-        
-        // Determine chapter number
-        let chapterNumber = existingChapters.length > 0 ? Math.max(...existingChapters) + 1 : 1;
-        if (chData.title) {
-          const numMatch = chData.title.match(/(\d+(\.\d+)?)/);
-          if (numMatch) chapterNumber = parseFloat(numMatch[1]);
-        }
-        
-        if (existingChapters.includes(chapterNumber)) {
-          setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Chapter ${chapterNumber} already exists. Skipping.`]);
-          continue;
-        }
-        
-        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Importing Chapter ${chapterNumber}...`]);
-        
-        const { data: newChapter, error: insertError } = await supabase
-          .from('chapters')
-          .insert({
-            seriesId: selectedSeries.id,
-            title: chData.title || `Chapter ${chapterNumber}`,
-            chapterNumber,
-            content: isNovel ? [chData.content] : [],
-            pageCount: isNovel ? (chData.content.split(/\s+/).filter(Boolean).length || 0) : 0,
-            publishDate: new Date().toISOString(),
-            views: 0
-          })
-          .select()
-          .single();
-        
-        if (insertError || !newChapter) {
-          console.error("Error creating chapter:", insertError);
-          continue;
-        }
-        
-        if (!isNovel && chData.images) {
-          let useStorj = true;
-          const uploadedUrls: string[] = [];
-
-          try {
-            const processImage = async (imgUrl: string, index: number) => {
-              try {
-                const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imgUrl)}&referer=${encodeURIComponent(chData.url || urlImportInput)}&cookies=${encodeURIComponent(chData.cookies || data.cookies || sourceCookies)}`;
-                const imgResponse = await fetch(proxyUrl);
-                if (!imgResponse.ok) throw new Error(`Failed to fetch image: ${imgResponse.status}`);
-                
-                const blob = await imgResponse.blob();
-                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Compressing image ${index + 1}/${chData.images.length}...`]);
-                const compressedSlices = await splitAndCompressImage(blob);
-                
-                if (useStorj) {
-                  setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Uploading image ${index + 1} to Storj...`]);
-                  const sliceUrls = await Promise.all(compressedSlices.map(async (slice, sliceIndex) => {
-                    const filename = `${selectedSeries.id}/${newChapter.id}/page_${index}_slice_${sliceIndex}_${Date.now()}.jpg`;
-                    return await uploadToStorj(slice, filename);
-                  }));
-                  return { index, urls: sliceUrls };
-                } else {
-                  // Fallback to database (handled outside this function if useStorj becomes false)
-                  throw new Error('Storj disabled');
-                }
-              } catch (err: any) {
-                setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error processing image ${index + 1}: ${err.message}`]);
-                throw err;
-              }
-            };
-
-            const CONCURRENCY_LIMIT = 6;
-            const results = [];
-            for (let i = 0; i < chData.images.length; i += CONCURRENCY_LIMIT) {
-              const chunk = chData.images.slice(i, i + CONCURRENCY_LIMIT);
-              const chunkResults = await Promise.all(chunk.map((url, j) => processImage(url, i + j)));
-              results.push(...chunkResults);
-            }
-
-            results.sort((a, b) => a.index - b.index);
-            const allUrls = results.flatMap(r => r.urls);
-            
-            await supabase
-              .from('chapters')
-              .update({ content: allUrls, pageCount: allUrls.length })
-              .eq('id', newChapter.id);
-            
-          } catch (err: any) {
-            setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj upload failed for chapter, falling back to database subcollection...`]);
-            useStorj = false;
-            
-            // Re-process for database if needed
-            let pageIndex = 0;
-            const pagesToInsert = [];
-            
-            for (let i = 0; i < chData.images.length; i++) {
-              const imgUrl = chData.images[i];
-              try {
-                const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imgUrl)}&referer=${encodeURIComponent(chData.url || urlImportInput)}&cookies=${encodeURIComponent(chData.cookies || data.cookies || sourceCookies)}`;
-                const imgResponse = await fetch(proxyUrl);
-                if (!imgResponse.ok) continue;
-                const blob = await imgResponse.blob();
-                const compressedSlices = await splitAndCompressImage(blob);
-                for (const slice of compressedSlices) {
-                  pagesToInsert.push({
-                    chapterId: newChapter.id,
-                    pageNumber: pageIndex,
-                    content: slice
-                  });
-                  pageIndex++;
-                }
-              } catch (e) {}
-            }
-            
-            if (pagesToInsert.length > 0) {
-              await supabase.from('pages').insert(pagesToInsert);
-            }
-            
-            await supabase
-              .from('chapters')
-              .update({ pageCount: pageIndex })
-              .eq('id', newChapter.id);
-          }
-        }
-        
-        existingChapters.push(chapterNumber);
-        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Successfully imported Chapter ${chapterNumber}.`]);
-      }
-      
-      setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] URL Import complete.`]);
-    } catch (error: any) {
-      setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] URL Import failed: ${error.message}`]);
-      if (error.message.includes('Cloudflare')) {
-        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Opening target URL in a new tab so you can solve the challenge and copy fresh cookies.`]);
-        window.open(urlImportInput, '_blank');
-      }
-    } finally {
-      setIsUrlImporting(false);
-      setIsSmartImporting(false);
-      setUrlImportInput('');
-    }
-  };
-
   const handleSmartZipUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsSmartImportModalOpen(true);
     setIsSmartImporting(true);
-    setImportType('zip');
     setSmartImportLog([`[${new Date().toLocaleTimeString()}] Starting Smart Import from ${file.name}...`]);
     
     try {
@@ -718,9 +460,9 @@ export const ChapterManagement: React.FC = () => {
           // Extract and compress images
           setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Compressing and uploading pages...`]);
           
-          let useStorj = true;
+          let useLocalUpload = true;
 
-          if (useStorj) {
+          if (useLocalUpload) {
             const uploadedUrls: string[] = [];
             let pageIndex = 0;
             
@@ -735,7 +477,7 @@ export const ChapterManagement: React.FC = () => {
                 // Upload slices for this image
                 const sliceUrls = await Promise.all(base64Images.map(async (base64, sliceIndex) => {
                   const filename = `${seriesId}/${chapterId}/page_${index}_slice_${sliceIndex}_${Date.now()}.jpg`;
-                  return await uploadToStorj(base64, filename);
+                  return await uploadToLocal(base64, filename);
                 }));
                 
                 return { index, urls: sliceUrls };
@@ -770,12 +512,12 @@ export const ChapterManagement: React.FC = () => {
               await supabase.from('pages').delete().eq('chapterId', chapterId);
               
             } catch (err: any) {
-              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Storj upload failed, falling back to database: ${err.message}`]);
-              useStorj = false;
+              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Local upload failed, falling back to database: ${err.message}`]);
+              useLocalUpload = false;
             }
           }
 
-          if (!useStorj) {
+          if (!useLocalUpload) {
             // Delete existing pages if updating
             if (existingChapter) {
               await supabase.from('pages').delete().eq('chapterId', chapterId);
@@ -891,10 +633,10 @@ export const ChapterManagement: React.FC = () => {
       
       // Save pages to subcollection for non-novels
       if (chapterId && !isNovel) {
-        let useStorj = true;
+        let useLocalUpload = true;
         let finalContent = [...formData.content];
 
-        if (useStorj) {
+        if (useLocalUpload) {
           setSavingProgress({ current: 0, total: formData.content.length, status: 'Initializing...' });
           const uploadedUrls: string[] = new Array(formData.content.length);
           
@@ -905,8 +647,8 @@ export const ChapterManagement: React.FC = () => {
           
           let presignedData: any[] = [];
           if (imagesToPresign.length > 0) {
-            setSavingProgress(prev => ({ ...prev, status: 'Presigning images...' }));
-            const presignResponse = await fetch('/api/storj-presign-batch', {
+            setSavingProgress(prev => ({ ...prev, status: 'Preparing local upload paths...' }));
+            const presignResponse = await fetch('/api/local-presign-batch', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -924,7 +666,7 @@ export const ChapterManagement: React.FC = () => {
               const { results } = await presignResponse.json();
               presignedData = results;
             }
-            setSavingProgress(prev => ({ ...prev, status: 'Uploading to Cloud...' }));
+            setSavingProgress(prev => ({ ...prev, status: 'Uploading pages locally...' }));
           }
 
           // Concurrency limit for uploads
@@ -937,10 +679,10 @@ export const ChapterManagement: React.FC = () => {
               try {
                 const preFetched = presignedData.find(p => p.filename.includes(`page_${i}_`));
                 const mimeType = content.match(/data:(.*?);/)?.[1] || 'image/jpeg';
-                const url = await uploadToStorj(content, `page_${i}`, mimeType, undefined, preFetched);
+                const url = await uploadToLocal(content, `page_${i}`, mimeType, undefined, preFetched);
                 uploadedUrls[i] = url;
               } catch (err) {
-                console.error(`Failed to upload page ${i} to Storj:`, err);
+                console.error(`Failed to upload page ${i} locally:`, err);
                 throw err;
               }
             } else {
@@ -958,7 +700,7 @@ export const ChapterManagement: React.FC = () => {
             
             finalContent = uploadedUrls.filter(Boolean);
             
-            // Update the chapter document with the Storj URLs
+            // Update the chapter document with the Local URLs
             await supabase
               .from('chapters')
               .update({ content: finalContent })
@@ -968,12 +710,12 @@ export const ChapterManagement: React.FC = () => {
             await supabase.from('pages').delete().eq('chapterId', chapterId);
             
           } catch (err) {
-            console.error("Storj parallel upload failed, falling back to database:", err);
-            useStorj = false;
+            console.error("Local parallel upload failed, falling back to database:", err);
+            useLocalUpload = false;
           }
         }
 
-        if (!useStorj) {
+        if (!useLocalUpload) {
           // Fallback to database subcollection
           // First, delete existing pages
           await supabase.from('pages').delete().eq('chapterId', chapterId);
@@ -1021,7 +763,11 @@ export const ChapterManagement: React.FC = () => {
         resetForm();
       }
     } catch (err: any) {
-      setError(`Save failed: ${err.message}`);
+      let errorMessage = err.message;
+      if (errorMessage === "Failed to fetch" || errorMessage.includes("Failed to fetch")) {
+        errorMessage = "Network Error: Could not connect to the database. Please ensure your Supabase URL & API Keys are correctly configured in AI Studio Secrets, and that you have an internet connection.";
+      }
+      setError(`Save failed: ${errorMessage}`);
     } finally {
       setIsSaving(false);
       setTimeout(() => setSuccess(null), 3000);
@@ -1153,26 +899,7 @@ export const ChapterManagement: React.FC = () => {
                 <FileArchive className="w-4 h-4" /> Smart Bulk Import
               </motion.button>
             )}
-            {selectedSeries && !isEditorOpen && (
-              <motion.button 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                onClick={() => {
-                  if (isUrlImporting) {
-                    setIsSmartImportModalOpen(true);
-                  } else {
-                    setIsUrlImportModalOpen(true);
-                  }
-                }}
-                className="w-full sm:w-auto justify-center bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-blue-400 transition-all shadow-lg shadow-blue-500/20"
-              >
-                {isUrlImporting ? (
-                  <><div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> View Progress</>
-                ) : (
-                  <><Globe className="w-4 h-4" /> Import URL</>
-                )}
-              </motion.button>
-            )}
+
             {selectedSeries && !isEditorOpen && (
               <motion.button 
                 initial={{ opacity: 0, y: 10 }}
@@ -1189,77 +916,7 @@ export const ChapterManagement: React.FC = () => {
 
       <input type="file" accept=".zip" className="hidden" ref={smartZipInputRef} onChange={handleSmartZipUpload} />
 
-      {isUrlImportModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setIsUrlImportModalOpen(false)} />
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative bg-[#111] border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-black uppercase tracking-tight text-white">Import from URL</h2>
-              <button 
-                onClick={() => setIsUrlImportModalOpen(false)} 
-                className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Chapter or Series URL</label>
-                <input
-                  type="url"
-                  value={urlImportInput}
-                  onChange={(e) => setUrlImportInput(e.target.value)}
-                  placeholder="https://example.com/manga/chapter-1"
-                  className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                />
-                <p className="text-xs text-zinc-500 mt-2">
-                  Paste a direct link to a chapter or a series page from any supported site. The system will automatically scrape and import the content into the current series.
-                </p>
-              </div>
-              
-              {sources.length > 0 && (
-                <div>
-                  <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">Source (Optional)</label>
-                  <select
-                    value={urlImportSourceId}
-                    onChange={(e) => setUrlImportSourceId(e.target.value)}
-                    className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all appearance-none"
-                  >
-                    <option value="">Auto-detect / No specific source</option>
-                    {sources.map(source => {
-                      let hostname = '';
-                      try { hostname = new URL(source.url).hostname; } catch (e) {}
-                      return (
-                        <option key={source.id} value={source.id}>{source.name} {hostname ? `(${hostname})` : ''}</option>
-                      );
-                    })}
-                  </select>
-                  <p className="text-xs text-zinc-500 mt-2">
-                    Select a configured source to use its cookies and bypass protections like Cloudflare.
-                  </p>
-                </div>
-              )}
 
-              <button
-                onClick={handleUrlImport}
-                disabled={!urlImportInput.trim() || isUrlImporting}
-                className="w-full py-3 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-400 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isUrlImporting ? (
-                  <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <Globe className="w-5 h-5" />
-                )}
-                Start Import
-              </button>
-            </div>
-          </motion.div>
-        </div>
-      )}
 
       <main className="max-w-[1600px] mx-auto p-4 sm:p-8">
         <AnimatePresence mode="wait">
@@ -1993,18 +1650,18 @@ export const ChapterManagement: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-3 bg-blue-500/20 text-blue-400 rounded-2xl">
-                    {importType === 'url' ? <Globe className="w-6 h-6" /> : <FileArchive className="w-6 h-6" />}
+                    <FileArchive className="w-6 h-6" />
                   </div>
                   <div>
                     <h2 className="text-2xl font-black uppercase tracking-tight text-white">
-                      {importType === 'url' ? 'URL Import' : 'Smart Bulk Import'}
+                      Smart Bulk Import
                     </h2>
                     <p className="text-zinc-400 text-sm font-medium">
-                      {importType === 'url' ? 'Importing chapters from external source' : 'Automatically identifying series and chapters from ZIP'}
+                      Automatically identifying series and chapters from ZIP
                     </p>
                   </div>
                 </div>
-                {(!isSmartImporting && !isUrlImporting) && (
+                {!isSmartImporting && (
                   <button 
                     onClick={() => setIsSmartImportModalOpen(false)} 
                     className="p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-full transition-colors"
@@ -2017,7 +1674,7 @@ export const ChapterManagement: React.FC = () => {
               <div className="bg-black/50 rounded-2xl p-4 border border-white/5">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-white font-black uppercase tracking-tight text-sm">Import Console</h3>
-                  {(isSmartImporting || isUrlImporting) && <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />}
+                  {isSmartImporting && <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />}
                 </div>
                 <div className="space-y-2 font-mono text-xs h-64 overflow-y-auto custom-scrollbar">
                   {smartImportLog.map((log, i) => (
@@ -2033,20 +1690,12 @@ export const ChapterManagement: React.FC = () => {
               </div>
 
               <div className="flex justify-end pt-4 gap-3">
-                {isUrlImporting && (
-                  <button 
-                    onClick={() => { cancelImportRef.current = true; }}
-                    className="px-6 py-3 bg-red-500/10 text-red-500 font-bold rounded-xl hover:bg-red-500/20 transition-colors"
-                  >
-                    Cancel Import
-                  </button>
-                )}
                 <button 
                   onClick={() => setIsSmartImportModalOpen(false)}
-                  disabled={isSmartImporting && !isUrlImporting}
+                  disabled={isSmartImporting}
                   className="px-6 py-3 bg-white text-black font-bold rounded-xl hover:bg-zinc-200 transition-colors disabled:opacity-50"
                 >
-                  {isSmartImporting || isUrlImporting ? 'Close (Runs in background)' : 'Close'}
+                  {isSmartImporting ? 'Close (Runs in background)' : 'Close'}
                 </button>
               </div>
             </motion.div>

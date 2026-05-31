@@ -36,7 +36,7 @@ export const SeriesDetail: React.FC = () => {
 
   const toggleFavorite = async () => {
     if (!user || !series || !profile) {
-      showToast("Please login to add to library");
+      showToast("الرجاء تسجيل الدخول للإضافة إلى المكتبة");
       return;
     }
     
@@ -57,7 +57,7 @@ export const SeriesDetail: React.FC = () => {
       setIsFavorite(!isFavorite);
     } catch (error: any) {
       console.error('Error updating favorites:', error);
-      showToast("Failed to update library");
+      showToast("فشلت الإضافة إلى المكتبة");
     }
   };
 
@@ -74,7 +74,7 @@ export const SeriesDetail: React.FC = () => {
       }
     } else {
       navigator.clipboard.writeText(window.location.href);
-      showToast('Link copied to clipboard!');
+      showToast('تم نسخ الرابط!');
     }
   };
 
@@ -158,7 +158,7 @@ export const SeriesDetail: React.FC = () => {
   }, [series]);
 
   if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>;
-  if (!series) return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">Series not found</div>;
+  if (!series) return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">لم يتم العثور على العمل</div>;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white pb-20 selection:bg-emerald-500 selection:text-black">
@@ -207,12 +207,12 @@ export const SeriesDetail: React.FC = () => {
               >
                 <div className="flex flex-wrap justify-center md:justify-start gap-2">
                   <span className="px-3 py-1 bg-emerald-500 text-black text-[10px] font-black rounded-full uppercase tracking-widest">
-                    {series.type}
+                    {series.type === 'Novel' ? 'رواية' : series.type === 'Manga' ? 'مانجا' : series.type === 'Manhwa' ? 'مانهوا' : series.type}
                   </span>
                   <span className={`px-3 py-1 text-[10px] font-black rounded-full uppercase tracking-widest border ${
                     series.status === 'Ongoing' ? 'border-emerald-500/50 text-emerald-500' : 'border-zinc-500/50 text-zinc-500'
                   }`}>
-                    {series.status}
+                    {series.status === 'Ongoing' ? 'مستمر' : series.status === 'Completed' ? 'مكتمل' : series.status}
                   </span>
                 </div>
 
@@ -256,9 +256,9 @@ export const SeriesDetail: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <button
               onClick={() => chapters.length > 0 && navigate(`/series/${series.slug}/${chapters[chapters.length - 1].chapterNumber}`)}
-              className="m3-button-primary flex-1 py-4 px-8 text-sm"
+              className="m3-button-primary flex-1 py-4 px-8 text-sm flex items-center justify-center gap-2"
             >
-              <BookOpen className="w-4 h-4" /> Start Reading
+              <BookOpen className="w-4 h-4" /> ابدأ القراءة
             </button>
             <div className="flex gap-3 sm:gap-4">
               <button 
@@ -266,7 +266,7 @@ export const SeriesDetail: React.FC = () => {
                 className={`flex-1 sm:flex-none py-4 px-8 text-sm transition-all flex items-center justify-center gap-2 ${isFavorite ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 rounded-2xl font-black uppercase tracking-widest' : 'm3-button-secondary'}`}
               >
                 <Heart className={`w-4 h-4 ${isFavorite ? 'fill-current' : ''}`} /> 
-                <span className="sm:hidden lg:inline">{isFavorite ? 'In Library' : 'Library'}</span>
+                <span className="sm:hidden lg:inline">{isFavorite ? 'في المكتبة' : 'أضف للمكتبة'}</span>
               </button>
               <button 
                 onClick={handleShare}
@@ -284,14 +284,14 @@ export const SeriesDetail: React.FC = () => {
                 onClick={() => setActiveTab('chapters')}
                 className={`px-8 py-4 text-sm font-black uppercase tracking-widest transition-colors relative ${activeTab === 'chapters' ? 'text-white' : 'text-zinc-500 hover:text-white'}`}
               >
-                Chapters ({chapters.length})
+                الفصول ({chapters.length})
                 {activeTab === 'chapters' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500" />}
               </button>
               <button
                 onClick={() => setActiveTab('comments')}
                 className={`px-8 py-4 text-sm font-black uppercase tracking-widest transition-colors relative ${activeTab === 'comments' ? 'text-white' : 'text-zinc-500 hover:text-white'}`}
               >
-                Comments ({commentsCount})
+                التعليقات ({commentsCount})
                 {activeTab === 'comments' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500" />}
               </button>
             </div>
@@ -311,12 +311,12 @@ export const SeriesDetail: React.FC = () => {
                       <div className="w-10 h-10 sm:w-12 sm:h-12 bg-zinc-950 rounded-xl flex items-center justify-center text-xs sm:text-sm font-black text-zinc-500 group-hover:text-emerald-500 transition-colors shrink-0">
                         {chapter.chapterNumber}
                       </div>
-                      <div className="min-w-0" dir="auto">
+                      <div className="min-w-0 text-right" dir="auto">
                         <h3 className="font-bold group-hover:text-emerald-500 transition-colors truncate">
-                          {chapter.title || `Chapter ${chapter.chapterNumber}`}
+                          {chapter.title || `الفصل ${chapter.chapterNumber}`}
                         </h3>
                         <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5 sm:mt-1">
-                          {chapter.publishDate ? format(new Date(chapter.publishDate), 'MMM dd, yyyy') : 'Recently'}
+                          {chapter.publishDate ? format(new Date(chapter.publishDate), 'yyyy/MM/dd') : 'مؤخراً'}
                         </p>
                       </div>
                     </div>
@@ -327,9 +327,9 @@ export const SeriesDetail: React.FC = () => {
                         </div>
                       )}
                       <span className="hidden xs:inline text-[10px] font-black uppercase tracking-widest text-zinc-600 group-hover:text-zinc-400 transition-colors">
-                        {chapter.content?.length || 0} Pages
+                        {chapter.content?.length || 0} صفحة
                       </span>
-                      <ChevronRight className="w-5 h-5 text-zinc-700 group-hover:text-emerald-500 transform group-hover:translate-x-1 transition-all" />
+                      <ChevronRight className="w-5 h-5 text-zinc-700 group-hover:text-emerald-500 transform rotate-180 group-hover:-translate-x-1 transition-all" />
                     </div>
                   </motion.div>
                 ))}
@@ -340,10 +340,10 @@ export const SeriesDetail: React.FC = () => {
           </section>
 
           {/* Synopsis */}
-          <section className="space-y-4">
-            <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
+          <section className="space-y-4 text-right">
+            <h2 className="text-2xl font-black tracking-tight flex items-center gap-3 justify-start">
               <div className="w-1 h-6 bg-emerald-500 rounded-full" />
-              Synopsis
+              نبذة عن العمل
             </h2>
             <div className="glass-panel p-8 rounded-[2rem] leading-relaxed text-zinc-300" dir="auto">
               {series.description}
@@ -353,30 +353,30 @@ export const SeriesDetail: React.FC = () => {
 
         {/* Sidebar */}
         <div className="space-y-8">
-          <div className="glass-panel p-8 rounded-[2rem] space-y-8">
-            <h3 className="text-lg font-black tracking-tight uppercase tracking-widest text-zinc-500">Details</h3>
+          <div className="glass-panel p-8 rounded-[2rem] space-y-8 text-right">
+            <h3 className="text-lg font-black tracking-tight uppercase tracking-widest text-zinc-500">التفاصيل</h3>
             
             <div className="space-y-6">
               <div className="flex justify-between items-center">
-                <span className="text-sm text-zinc-500">Artist</span>
+                <span className="text-sm text-zinc-500">الرسام</span>
                 <span className="text-sm font-bold">{series.artist}</span>
               </div>
               <div className="h-px bg-white/5" />
               <div className="flex justify-between items-center">
-                <span className="text-sm text-zinc-500">Release</span>
+                <span className="text-sm text-zinc-500">سنة الإصدار</span>
                 <span className="text-sm font-bold">{series.releaseYear}</span>
               </div>
               <div className="h-px bg-white/5" />
               <div className="flex justify-between items-center">
-                <span className="text-sm text-zinc-500">Type</span>
+                <span className="text-sm text-zinc-500">النوع</span>
                 <span className="px-2 py-1 bg-zinc-950 rounded-lg text-[10px] font-black uppercase tracking-widest border border-white/5">
-                  {series.type}
+                  {series.type === 'Novel' ? 'رواية' : series.type === 'Manga' ? 'مانجا' : series.type === 'Manhwa' ? 'مانهوا' : series.type}
                 </span>
               </div>
             </div>
 
-            <div className="pt-4">
-              <p className="text-xs font-black uppercase tracking-widest text-zinc-500 mb-4">Tags</p>
+            <div className="pt-4 text-right">
+              <p className="text-xs font-black uppercase tracking-widest text-zinc-500 mb-4">الوسوم</p>
               <div className="flex flex-wrap gap-2">
                 {series.tags.map(tag => (
                   <span key={tag} className="px-3 py-1 bg-zinc-950 text-zinc-400 rounded-lg text-[10px] font-bold border border-white/5">
@@ -396,11 +396,11 @@ export const SeriesDetail: React.FC = () => {
               referrerPolicy="no-referrer"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/80 to-transparent flex flex-col justify-end p-8">
-              <p className="text-black font-black text-2xl tracking-tighter leading-none mb-4">
-                JOIN OUR <br /> DISCORD
+              <p className="text-black font-black text-2xl tracking-tighter leading-none mb-4 text-right">
+                انضم إلى <br /> ديسكورد الخاص بنا
               </p>
               <button className="w-full py-3 bg-black text-white rounded-xl font-black text-xs uppercase tracking-widest">
-                Join Now
+                انضم الآن
               </button>
             </div>
           </div>

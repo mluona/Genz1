@@ -37,26 +37,25 @@ export const AdminLayout: React.FC = () => {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white" dir="rtl">
         <div className="text-center">
-          <h1 className="text-4xl font-black mb-4">ACCESS DENIED</h1>
-          <p className="text-zinc-500 mb-8">You do not have permission to view this page.</p>
-          <Link to="/" className="px-8 py-3 bg-emerald-500 text-black font-bold rounded-full">Return Home</Link>
+          <h1 className="text-4xl font-black mb-4">تم رفض الوصول</h1>
+          <p className="text-zinc-500 mb-8">ليس لديك الصلاحية الكافية لعرض هذه الصفحة المخصصة للإدارة.</p>
+          <Link to="/" className="px-8 py-3 bg-emerald-500 text-black font-bold rounded-full">العودة للرئيسية</Link>
         </div>
       </div>
     );
   }
 
   const navItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
-    { icon: BookOpen, label: 'Series', path: '/admin/series' },
-    { icon: Layers, label: 'Chapters', path: '/admin/chapters' },
-    { icon: Globe, label: 'Auto Import', path: '/admin/import' },
-    { icon: Users, label: 'Users', path: '/admin/users' },
-    { icon: MessageSquare, label: 'Comments', path: '/admin/comments' },
-    { icon: FileText, label: 'Pages', path: '/admin/pages' },
-    { icon: Coins, label: 'Coin Packages', path: '/admin/coins' },
-    { icon: BarChart3, label: 'Analytics', path: '/admin/analytics' },
+    { icon: LayoutDashboard, label: 'لوحة التحكم', path: '/admin' },
+    { icon: BookOpen, label: 'الأعمال والقصص', path: '/admin/series' },
+    { icon: Layers, label: 'الفصول', path: '/admin/chapters' },
+    { icon: Users, label: 'المستخدمين', path: '/admin/users' },
+    { icon: MessageSquare, label: 'التعليقات', path: '/admin/comments' },
+    { icon: FileText, label: 'الصفحات', path: '/admin/pages' },
+    { icon: Coins, label: 'باقات الكوينز', path: '/admin/coins' },
+    { icon: BarChart3, label: 'التحليلات والمبيعات', path: '/admin/analytics' },
   ];
 
   const handleLogout = async () => {
@@ -65,7 +64,7 @@ export const AdminLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex text-zinc-900">
+    <div className="min-h-screen bg-zinc-50 flex text-zinc-900 flex-row-reverse" dir="rtl">
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -75,12 +74,12 @@ export const AdminLayout: React.FC = () => {
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-zinc-900 text-white transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+      <aside className={`fixed inset-y-0 right-0 z-50 w-64 bg-zinc-900 text-white transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'} lg:translate-x-0`}>
         <div className="h-full flex flex-col">
-          <div className="p-6 flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-2">
-              <span className="text-2xl font-black tracking-tighter">GENZ</span>
-              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Admin</span>
+          <div className="p-6 flex items-center justify-between flex-row-reverse">
+            <Link to="/" className="flex items-center gap-2 flex-row-reverse">
+              <span className="text-2xl font-black tracking-tighter">لوحة التحكم</span>
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest bg-zinc-800 px-2 py-0.5 rounded-full">المدير</span>
             </Link>
             <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-1 text-zinc-500">
               <X className="w-5 h-5" />
@@ -94,10 +93,10 @@ export const AdminLayout: React.FC = () => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-colors ${isActive ? 'bg-emerald-500 text-black' : 'text-zinc-400 hover:bg-white/5 hover:text-white'}`}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${isActive ? 'bg-emerald-500 text-black' : 'text-zinc-400 hover:bg-white/5 hover:text-white'} flex-row`}
                 >
-                  <item.icon className="w-5 h-5" />
-                  {item.label}
+                  <item.icon className="w-5 h-5 shrink-0" />
+                  <span>{item.label}</span>
                 </Link>
               );
             })}
@@ -106,42 +105,42 @@ export const AdminLayout: React.FC = () => {
           <div className="p-4 border-t border-white/5">
             <button 
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-zinc-400 hover:bg-red-500/10 hover:text-red-500 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-zinc-400 hover:bg-red-500/10 hover:text-red-500 transition-colors flex-row"
             >
-              <LogOut className="w-5 h-5" />
-              Logout
+              <LogOut className="w-5 h-5 shrink-0" />
+              <span>تسجيل الخروج</span>
             </button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'ml-0'} w-full min-w-0`}>
+      <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'lg:mr-64' : 'mr-0'} w-full min-w-0 text-right`}>
         {/* Header */}
-        <header className="sticky top-0 z-30 bg-white border-b border-zinc-200 px-4 sm:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <header className="sticky top-0 z-30 bg-white border-b border-zinc-200 px-4 sm:px-8 py-4 flex items-center justify-between flex-row-reverse">
+          <div className="flex items-center gap-4 flex-row-reverse">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-zinc-500 hover:bg-zinc-100 rounded-lg lg:hidden">
               <Menu className="w-5 h-5" />
             </button>
             <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
               <input 
                 type="text" 
-                placeholder="Search admin..." 
-                className="bg-zinc-100 border-none rounded-full py-2 pl-10 pr-4 text-sm w-64 focus:ring-2 focus:ring-emerald-500/20"
+                placeholder="ابحث في الإدارة..." 
+                className="bg-zinc-100 border-none rounded-full py-2 pr-10 pl-4 text-sm w-64 focus:ring-2 focus:ring-emerald-500/20 text-right"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 flex-row-reverse">
             <button className="relative p-2 text-zinc-500 hover:bg-zinc-100 rounded-lg">
               <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+              <span className="absolute top-2 left-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
             </button>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-row-reverse">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-bold">{profile?.username}</p>
-                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Administrator</p>
+                <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">المدير العام</p>
               </div>
               <img 
                 src={profile?.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.id}`} 

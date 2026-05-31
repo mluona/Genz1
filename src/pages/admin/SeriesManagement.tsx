@@ -3,7 +3,7 @@ import { supabase } from '../../supabase';
 import { Series, SeriesType, SeriesStatus } from '../../types';
 import { Plus, Edit2, Trash2, Search, Filter, X, Upload, Loader2, FileArchive, ExternalLink, BookOpen } from 'lucide-react';
 import { compressImage, splitAndCompressImage } from '../../utils/imageCompression';
-import { uploadToStorj } from '../../utils/storjUpload';
+import { uploadToLocal } from '../../utils/localUpload';
 import JSZip from 'jszip';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
@@ -94,22 +94,22 @@ export const SeriesManagement: React.FC = () => {
       const mimeTypeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : file.type;
       
-      // Upload to Storj
+      // Upload to Local Storage
       const filename = `series/${Date.now()}-${field}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const storjUrl = await uploadToStorj(base64Image, filename, mimeType, (progress) => {
+      const localUrl = await uploadToLocal(base64Image, filename, mimeType, (progress) => {
         setUploadProgress(progress);
       });
 
-      if (!storjUrl) throw new Error("Failed to get Storj URL");
+      if (!localUrl) throw new Error("Failed to get uploaded file URL");
 
-      setFormData(prev => ({ ...prev, [field]: storjUrl }));
+      setFormData(prev => ({ ...prev, [field]: localUrl }));
       setUploadProgress(100);
       
       if (editingSeries) {
         const { error } = await supabase
           .from('series')
           .update({
-            [field]: storjUrl,
+            [field]: localUrl,
             lastUpdated: new Date().toISOString()
           })
           .eq('id', editingSeries.id);
@@ -271,7 +271,7 @@ export const SeriesManagement: React.FC = () => {
 
         let pageIndex = 0;
         const uploadedUrls: string[] = [];
-        let useStorj = true;
+        let useLocalUpload = true;
         
         for (const path of paths) {
           if (cancelImportRef.current) throw new Error("Import cancelled by user.");
@@ -287,21 +287,17 @@ export const SeriesManagement: React.FC = () => {
               const mimeTypeMatch = base64.match(/^data:(image\/[a-zA-Z+]+);base64,/);
               const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
               
-              if (useStorj) {
+              if (useLocalUpload) {
                 try {
-                  const storjUrl = await uploadToStorj(base64, `${seriesId}/${chapterId}/${pageId}.jpg`, mimeType);
-                  if (storjUrl) uploadedUrls.push(storjUrl);
-                } catch (storjErr: any) {
-                  if (storjErr.message.includes('credentials not fully configured')) {
-                    useStorj = false;
-                    setSmartImportLog(prev => [...prev, { message: `Storj not configured. Falling back to database storage (Warning: may hit quota limits).`, type: 'info', timestamp: new Date().toLocaleTimeString() }]);
-                  } else {
-                    throw storjErr;
-                  }
+                  const localUrl = await uploadToLocal(base64, `${seriesId}/${chapterId}/${pageId}.jpg`, mimeType);
+                  if (localUrl) uploadedUrls.push(localUrl);
+                } catch (uploadErr: any) {
+                  useLocalUpload = false;
+                  setSmartImportLog(prev => [...prev, { message: `Local upload failed: ${uploadErr.message}. Falling back to inline database storage.`, type: 'warning', timestamp: new Date().toLocaleTimeString() }]);
                 }
               }
               
-              if (!useStorj) {
+              if (!useLocalUpload) {
                 const { error: pageError } = await supabase.from('pages').insert([{
                   chapterId: chapterId,
                   pageNumber: pageIndex,
@@ -317,7 +313,7 @@ export const SeriesManagement: React.FC = () => {
         }
         
         const updateData: any = { pageCount: pageIndex };
-        if (useStorj && uploadedUrls.length > 0) {
+        if (useLocalUpload && uploadedUrls.length > 0) {
           updateData.content = uploadedUrls;
           updateData.pageCount = uploadedUrls.length;
         }
@@ -351,6 +347,11 @@ export const SeriesManagement: React.FC = () => {
       return;
     }
 
+    if (!formData.coverImage) {
+      alert("Please upload a cover image before saving the series.");
+      return;
+    }
+
     const slug = formData.slug || await generateSlug(formData.title);
     const data = {
       ...formData,
@@ -379,7 +380,11 @@ export const SeriesManagement: React.FC = () => {
       });
     } catch (error: any) {
       console.error("Error saving series:", error);
-      alert(error.message || "Failed to save series");
+      let errorMessage = error.message || "Failed to save series";
+      if (errorMessage === "Failed to fetch" || errorMessage.includes("Failed to fetch")) {
+        errorMessage = "Network Error: Could not connect to the database. Please ensure your Supabase URL / API Keys are correctly configured in AI Studio Secrets, and that you have an internet connection.";
+      }
+      alert(errorMessage);
     }
   };
 
@@ -571,7 +576,6 @@ export const SeriesManagement: React.FC = () => {
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Slug</label>
                     <input 
                       type="text" 
-                      required
                       value={formData.slug}
                       onChange={e => setFormData({...formData, slug: e.target.value})}
                       className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-emerald-500/20 outline-none"

@@ -114,7 +114,7 @@ export const Profile: React.FC = () => {
   }, [profile]);
 
   if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>;
-  if (!user) return <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center gap-4"><h1 className="text-2xl font-black">Please login to view your profile</h1><Link to="/" className="px-8 py-3 bg-emerald-500 text-black font-bold rounded-full">Go Home</Link></div>;
+  if (!user) return <div className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center gap-4"><h1 className="text-2xl font-black">الرجاء تسجيل الدخول لعرض حسابك الشخصي</h1><Link to="/" className="px-8 py-3 bg-emerald-500 text-black font-bold rounded-full">الذهاب للرئيسية</Link></div>;
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,7 +160,7 @@ export const Profile: React.FC = () => {
 
       if (transError) throw transError;
 
-      alert(`Successfully purchased ${amount} coins!`);
+      alert(`تم شراء ${amount} عملة بنجاح!`);
       setSelectedPackage(null);
       
       if (activeTab === 'wallet') {
@@ -174,7 +174,7 @@ export const Profile: React.FC = () => {
       }
     } catch (error) {
       console.error("Error purchasing coins:", error);
-      alert("Failed to purchase coins");
+      alert("فشل شراء العملات");
     }
   };
 
@@ -205,36 +205,36 @@ export const Profile: React.FC = () => {
                 <h2 className="text-2xl font-black tracking-tight">{profile?.username}</h2>
                 <p className="text-zinc-500 text-sm font-medium">{user.email}</p>
               </div>
-              <p className="text-zinc-400 text-sm leading-relaxed">{profile?.bio || "No bio yet."}</p>
+              <p className="text-zinc-400 text-sm leading-relaxed">{profile?.bio || "لا توجد نبذة تعريفية بعد."}</p>
               <div className="flex flex-wrap gap-2 justify-center">
-                <span className="px-3 py-1 bg-white/5 text-[10px] font-black uppercase tracking-widest rounded-lg">{profile?.role}</span>
+                <span className="px-3 py-1 bg-white/5 text-[11px] font-black uppercase tracking-widest rounded-lg">{profile?.role === 'admin' ? 'مدير' : 'عضو'}</span>
               </div>
               <div className="pt-4 border-t border-white/5 space-y-2">
                 <button 
                   onClick={() => setIsEditing(!isEditing)}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-white text-black font-bold rounded-2xl hover:bg-zinc-200 transition-colors"
                 >
-                  <Edit2 className="w-4 h-4" /> Edit Profile
+                  <Edit2 className="w-4 h-4" /> تعديل الحساب
                 </button>
                 <button 
                   onClick={handleLogout}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-800 text-red-500 font-bold rounded-2xl hover:bg-red-500/10 transition-colors"
                 >
-                  <LogOut className="w-4 h-4" /> Logout
+                  <LogOut className="w-4 h-4 rotate-180" /> تسجيل الخروج
                 </button>
               </div>
             </div>
 
             <div className="bg-zinc-900 border border-white/5 rounded-[2.5rem] p-8 space-y-6">
-              <h3 className="font-black uppercase tracking-tight text-sm">Stats</h3>
+              <h3 className="font-black uppercase tracking-tight text-sm">الإحصائيات</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="text-center p-4 bg-zinc-950 rounded-2xl">
                   <p className="text-xl font-black">{profile?.favorites.length || 0}</p>
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Favorites</p>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">المفضلة</p>
                 </div>
                 <div className="text-center p-4 bg-zinc-950 rounded-2xl">
                   <p className="text-xl font-black">{profile?.history.length || 0}</p>
-                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">History</p>
+                  <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">السجل</p>
                 </div>
               </div>
               
@@ -242,7 +242,7 @@ export const Profile: React.FC = () => {
                 <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-2xl p-6 text-center space-y-2">
                   <Coins className="w-8 h-8 text-amber-500 mx-auto mb-2" />
                   <p className="text-3xl font-black text-amber-500">{profile?.coins || 0}</p>
-                  <p className="text-[10px] font-bold text-amber-500/70 uppercase tracking-widest">Available Coins</p>
+                  <p className="text-[10px] font-bold text-amber-500/70 uppercase tracking-widest">العملات المتاحة</p>
                 </div>
               </div>
             </div>
@@ -251,40 +251,40 @@ export const Profile: React.FC = () => {
           {/* Main Content */}
           <div className="flex-1 w-full space-y-8">
             {isEditing ? (
-              <div className="bg-zinc-900 border border-white/5 rounded-[2.5rem] p-8">
-                <h3 className="text-xl font-black uppercase tracking-tight mb-8">Edit Profile</h3>
+              <div className="bg-zinc-900 border border-white/5 rounded-[2.5rem] p-8 text-right">
+                <h3 className="text-xl font-black uppercase tracking-tight mb-8">تعديل الملف الشخصي</h3>
                 <form onSubmit={handleUpdate} className="space-y-6">
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Username</label>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 text-right">اسم المستخدم</label>
                     <input 
                       type="text" 
                       value={formData.username}
                       onChange={e => setFormData({...formData, username: e.target.value})}
-                      className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:border-emerald-500/50 outline-none"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:border-emerald-500/50 outline-none text-right"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Bio</label>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 text-right">النبذة التعريفية</label>
                     <textarea 
                       rows={4}
                       value={formData.bio}
                       onChange={e => setFormData({...formData, bio: e.target.value})}
-                      className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:border-emerald-500/50 outline-none resize-none"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:border-emerald-500/50 outline-none resize-none text-right"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Profile Picture URL</label>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2 text-right">رابط الصورة الشخصية</label>
                     <input 
                       type="text" 
                       value={formData.profilePicture}
                       onChange={e => setFormData({...formData, profilePicture: e.target.value})}
-                      className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:border-emerald-500/50 outline-none"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3 focus:border-emerald-500/50 outline-none text-right"
                       placeholder="https://example.com/image.jpg"
                     />
                   </div>
                   <div className="flex gap-4">
-                    <button type="submit" className="px-8 py-3 bg-emerald-500 text-black font-bold rounded-2xl">Save Changes</button>
-                    <button type="button" onClick={() => setIsEditing(false)} className="px-8 py-3 bg-zinc-800 text-white font-bold rounded-2xl">Cancel</button>
+                    <button type="submit" className="px-8 py-3 bg-emerald-500 text-black font-bold rounded-2xl">حفظ التغييرات</button>
+                    <button type="button" onClick={() => setIsEditing(false)} className="px-8 py-3 bg-zinc-800 text-white font-bold rounded-2xl">إلغاء</button>
                   </div>
                 </form>
               </div>
@@ -295,19 +295,19 @@ export const Profile: React.FC = () => {
                     onClick={() => setActiveTab('history')}
                     className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-black uppercase tracking-widest transition-colors rounded-full whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
                   >
-                    History
+                    السجل
                   </button>
                   <button 
                     onClick={() => setActiveTab('favorites')}
                     className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-black uppercase tracking-widest transition-colors rounded-full whitespace-nowrap ${activeTab === 'favorites' ? 'bg-white text-black' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}
                   >
-                    Favorites
+                    المفضلة
                   </button>
                   <button 
                     onClick={() => setActiveTab('wallet')}
                     className={`px-4 sm:px-6 py-2 text-xs sm:text-sm font-black uppercase tracking-widest transition-colors rounded-full whitespace-nowrap ${activeTab === 'wallet' ? 'bg-amber-500 text-black' : 'text-zinc-500 hover:text-amber-500 hover:bg-amber-500/5'}`}
                   >
-                    Wallet
+                    المحفظة
                   </button>
                 </div>
 
@@ -316,14 +316,14 @@ export const Profile: React.FC = () => {
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center gap-3">
                         <Heart className="w-6 h-6 text-red-500" />
-                        <h3 className="text-xl font-black uppercase tracking-tight">Favorites</h3>
+                        <h3 className="text-xl font-black uppercase tracking-tight">المفضلة</h3>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                       {isLoadingData ? (
                         <div className="col-span-full py-8 flex justify-center"><div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>
                       ) : favoriteSeries.length === 0 ? (
-                        <p className="col-span-full text-zinc-500 italic">No favorites yet.</p>
+                        <p className="col-span-full text-zinc-500 italic">لا توجد أعمال في المفضلة بعد.</p>
                       ) : (
                         favoriteSeries.map(series => (
                           <Link key={series.id} to={`/series/${series.slug}`} className="group relative aspect-[3/4] rounded-2xl overflow-hidden">
@@ -345,21 +345,21 @@ export const Profile: React.FC = () => {
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center gap-3">
                         <History className="w-6 h-6 text-blue-500" />
-                        <h3 className="text-xl font-black uppercase tracking-tight">Reading History</h3>
+                        <h3 className="text-xl font-black uppercase tracking-tight">سجل القراءة</h3>
                       </div>
                     </div>
                   <div className="space-y-4">
                     {isLoadingData ? (
                       <div className="py-8 flex justify-center"><div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>
                     ) : historySeries.length === 0 ? (
-                      <p className="text-zinc-500 italic">No history yet.</p>
+                      <p className="text-zinc-500 italic">لا يوجد سجل قراءة بعد.</p>
                     ) : (
                       historySeries.map(series => (
                         <Link key={series.id} to={`/series/${series.slug}`} className="flex items-center gap-4 bg-zinc-900/50 hover:bg-zinc-900 border border-white/5 rounded-2xl p-4 transition-colors group">
                           <img src={series.coverImage || undefined} alt={series.title} className="w-16 h-20 object-cover rounded-xl shrink-0" referrerPolicy="no-referrer" />
-                          <div className="flex-1 min-w-0">
+                          <div className="flex-1 min-w-0 text-right">
                             <h4 className="font-bold text-sm truncate group-hover:text-emerald-500 transition-colors" dir="auto">{series.title}</h4>
-                            <p className="text-xs text-zinc-500 mt-1">Last read chapter</p>
+                            <p className="text-xs text-zinc-500 mt-1">آخر فصل تمت قراءته</p>
                           </div>
                           <ChevronRight className="w-5 h-5 text-zinc-600 group-hover:text-emerald-500 transform group-hover:translate-x-1 transition-all" />
                         </Link>
@@ -374,24 +374,24 @@ export const Profile: React.FC = () => {
                     <div className="bg-zinc-900 border border-white/5 rounded-[2.5rem] p-8">
                       <div className="flex items-center gap-3 mb-8">
                         <Coins className="w-6 h-6 text-amber-500" />
-                        <h3 className="text-xl font-black uppercase tracking-tight">Buy Coins</h3>
+                        <h3 className="text-xl font-black uppercase tracking-tight">شراء عملات</h3>
                       </div>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {coinPackages.length === 0 ? (
-                          <div className="col-span-full text-center py-8 text-zinc-500 italic">No coin packages available at the moment.</div>
+                          <div className="col-span-full text-center py-8 text-zinc-500 italic">لا تتوفر باقات عملات حالياً.</div>
                         ) : (
                           coinPackages.map((pkg) => (
                             <div key={pkg.id} className="bg-zinc-950 border border-white/5 hover:border-amber-500/30 rounded-2xl p-6 text-center transition-all group relative overflow-hidden">
                               {(pkg.bonusCoins || 0) > 0 && (
                                 <div className="absolute top-0 inset-x-0 bg-amber-500 text-black text-[10px] font-black uppercase tracking-widest py-1">
-                                  +{pkg.bonusCoins} Bonus
+                                  +{pkg.bonusCoins} عملة إضافية
                                 </div>
                               )}
                               <div className={`mt-${(pkg.bonusCoins || 0) > 0 ? '4' : '0'}`}>
                                 <Coins className="w-8 h-8 text-amber-500 mx-auto mb-4 group-hover:scale-110 transition-transform" />
                                 <p className="text-2xl font-black text-white mb-1">{pkg.coins}</p>
-                                <p className="text-xs text-zinc-500 uppercase tracking-widest mb-6">Coins</p>
+                                <p className="text-xs text-zinc-500 uppercase tracking-widest mb-6">عملة</p>
                                 <button 
                                   onClick={() => setSelectedPackage(pkg)}
                                   className="w-full py-3 bg-white/5 hover:bg-amber-500 text-white hover:text-black font-bold rounded-xl transition-colors"
@@ -406,9 +406,9 @@ export const Profile: React.FC = () => {
                     </div>
 
                     <div className="bg-zinc-900 border border-white/5 rounded-[2.5rem] p-8">
-                      <h3 className="text-xl font-black uppercase tracking-tight mb-6">Transaction History</h3>
+                      <h3 className="text-xl font-black uppercase tracking-tight mb-6">سجل معاملات المحفظة</h3>
                       {transactions.length === 0 ? (
-                        <p className="text-zinc-500 italic text-center py-8">No transactions yet.</p>
+                        <p className="text-zinc-500 italic text-center py-8">لا توجد أي معاملات بعد.</p>
                       ) : (
                         <div className="space-y-4">
                           {transactions.map(tx => (
@@ -443,9 +443,9 @@ export const Profile: React.FC = () => {
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="text-xl font-black uppercase tracking-tight mb-2">Complete Purchase</h3>
+            <h3 className="text-xl font-black uppercase tracking-tight mb-2">إتمام عملية الشراء</h3>
             <p className="text-zinc-400 text-sm mb-6">
-              You are purchasing {selectedPackage.coins + (selectedPackage.bonusCoins || 0)} coins for ${selectedPackage.price.toFixed(2)} {selectedPackage.currency}.
+              أنت على وشك شراء {selectedPackage.coins + (selectedPackage.bonusCoins || 0)} عملة مقابل {selectedPackage.price.toFixed(2)} USD.
             </p>
             
             <PayPalScriptProvider options={{ clientId: "test", currency: selectedPackage.currency || "USD" }}>

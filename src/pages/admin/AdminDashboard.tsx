@@ -192,15 +192,15 @@ export const AdminDashboard: React.FC = () => {
             </div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-500/10 text-purple-500 rounded-xl">
+                <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-xl">
                   <Zap className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-white text-sm font-bold">Scraper Engine</p>
-                  <p className="text-purple-500 text-[10px] font-black uppercase tracking-widest">Ready</p>
+                  <p className="text-white text-sm font-bold">Content Delivery</p>
+                  <p className="text-emerald-500 text-[10px] font-black uppercase tracking-widest">Active</p>
                 </div>
               </div>
-              <div className="w-2 h-2 bg-purple-500 rounded-full" />
+              <div className="w-2 h-2 bg-emerald-500 rounded-full" />
             </div>
           </div>
 

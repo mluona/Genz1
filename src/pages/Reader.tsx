@@ -244,8 +244,8 @@ export const Reader: React.FC = () => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `${series?.title} - Chapter ${chapter?.chapterNumber}`,
-          text: `Read Chapter ${chapter?.chapterNumber} of ${series?.title} on GENZ!`,
+          title: `${series?.title} - الفصل ${chapter?.chapterNumber}`,
+          text: `اقرأ الفصل ${chapter?.chapterNumber} من ${series?.title}!`,
           url: window.location.href,
         });
       } catch (err) {
@@ -253,7 +253,7 @@ export const Reader: React.FC = () => {
       }
     } else {
       navigator.clipboard.writeText(window.location.href);
-      showToast('Link copied to clipboard!');
+      showToast('تم نسخ الرابط!');
     }
   };
 
@@ -443,7 +443,7 @@ export const Reader: React.FC = () => {
     
     const userCoins = profile.coins || 0;
     if (userCoins < chapter.coinPrice) {
-      showToast("Not enough coins! Redirecting to profile...");
+      showToast("ليس لديك عملات كافية! جاري توجيهك إلى الحساب...");
       setTimeout(() => navigate('/profile'), 2000);
       return;
     }
@@ -501,7 +501,7 @@ export const Reader: React.FC = () => {
       
     } catch (error) {
       console.error("Error unlocking chapter:", error);
-      showToast("Failed to unlock chapter.");
+      showToast("فشل إلغاء قفل الفصل.");
     }
   };
 
@@ -511,7 +511,7 @@ export const Reader: React.FC = () => {
       return;
     }
     if ((profile.coins || 0) < amount) {
-      showToast("Not enough coins to tip! Redirecting to profile...");
+      showToast("ليس لديك عملات كافية لإرسال الدعم! جاري توجيهك للحساب...");
       setTimeout(() => navigate('/profile'), 2000);
       return;
     }
@@ -538,10 +538,10 @@ export const Reader: React.FC = () => {
 
       if (transError) throw transError;
       
-      showToast(`Thank you for supporting the creator with ${amount} coins!`);
+      showToast(`شكراً لك على دعم الكاتب/الرسام بـ ${amount} عملة!`);
     } catch (error) {
       console.error("Error tipping creator:", error);
-      showToast("Failed to send tip.");
+      showToast("فشل إرسال الدعم.");
     }
   };
 
@@ -562,7 +562,7 @@ export const Reader: React.FC = () => {
   };
 
   if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>;
-  if (!series || !chapter) return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">Chapter not found</div>;
+  if (!series || !chapter) return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">لم يتم العثور على الفصل</div>;
 
   return (
     <div 
@@ -592,12 +592,12 @@ export const Reader: React.FC = () => {
             >
               <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
             </button>
-            <div className="hidden xs:block">
+            <div className="hidden xs:block text-right">
               <h1 className="text-xs sm:text-sm font-black tracking-tight truncate max-w-[120px] sm:max-w-xs" dir="auto">{series.title}</h1>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-emerald-500">Ch. {chapter.chapterNumber}</span>
+              <div className="flex items-center gap-2 mt-0.5 justify-start">
+                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-emerald-500">الفصل {chapter.chapterNumber}</span>
                 <div className="hidden sm:block w-1 h-1 bg-zinc-700 rounded-full" />
-                <span className="hidden sm:block text-[10px] font-bold text-zinc-500 uppercase tracking-widest truncate max-w-[100px]" dir="auto">{chapter.title || 'Untitled'}</span>
+                <span className="hidden sm:block text-[10px] font-bold text-zinc-500 uppercase tracking-widest truncate max-w-[100px]" dir="auto">{chapter.title || 'بلا عنوان'}</span>
               </div>
             </div>
           </div>
@@ -621,37 +621,37 @@ export const Reader: React.FC = () => {
                       className="fixed sm:absolute right-4 sm:right-0 top-20 sm:top-full mt-2 w-[calc(100vw-32px)] sm:w-72 bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl z-50 text-white"
                       onClick={e => e.stopPropagation()}
                     >
-                      <div className="space-y-6">
+                      <div className="space-y-6 text-right">
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">Theme</p>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 mb-3">المظهر</p>
                           <div className="flex gap-2">
-                            <button onClick={() => setNovelTheme('dark')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'dark' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Dark</button>
-                            <button onClick={() => setNovelTheme('light')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'light' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Light</button>
-                            <button onClick={() => setNovelTheme('sepia')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'sepia' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Sepia</button>
+                            <button onClick={() => setNovelTheme('dark')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'dark' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>داكن</button>
+                            <button onClick={() => setNovelTheme('light')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'light' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>فاتح</button>
+                            <button onClick={() => setNovelTheme('sepia')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'sepia' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>كلاسيكي</button>
                           </div>
                         </div>
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">Font Family</p>
-                          <div className="flex gap-2">
-                            <button onClick={() => setFontFamily('serif')} className={`flex-1 py-2 rounded-xl border font-serif text-xs ${fontFamily === 'serif' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Serif</button>
-                            <button onClick={() => setFontFamily('sans')} className={`flex-1 py-2 rounded-xl border font-sans text-xs ${fontFamily === 'sans' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Sans</button>
-                            <button onClick={() => setFontFamily('mono')} className={`flex-1 py-2 rounded-xl border font-mono text-xs ${fontFamily === 'mono' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Mono</button>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 mb-3">خط الكتابة</p>
+                          <div className="flex gap-2 font-sans">
+                            <button onClick={() => setFontFamily('serif')} className={`flex-1 py-2 rounded-xl border text-xs font-serif ${fontFamily === 'serif' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Serif</button>
+                            <button onClick={() => setFontFamily('sans')} className={`flex-1 py-2 rounded-xl border text-xs font-sans ${fontFamily === 'sans' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Sans</button>
+                            <button onClick={() => setFontFamily('mono')} className={`flex-1 py-2 rounded-xl border text-xs font-mono ${fontFamily === 'mono' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Mono</button>
                           </div>
                         </div>
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">Text Size</p>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 mb-3">حجم الخط</p>
                           <div className="flex items-center gap-4">
-                            <button onClick={() => setFontSize(Math.max(12, fontSize - 2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700">-</button>
-                            <span className="flex-1 text-center font-bold">{fontSize}px</span>
-                            <button onClick={() => setFontSize(Math.min(32, fontSize + 2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700">+</button>
+                            <button onClick={() => setFontSize(Math.max(12, fontSize - 2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700 font-black">-</button>
+                            <span className="flex-1 text-center font-bold font-mono">{fontSize}px</span>
+                            <button onClick={() => setFontSize(Math.min(32, fontSize + 2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700 font-black">+</button>
                           </div>
                         </div>
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-3">Line Height</p>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 mb-3">تباعد الأسطر</p>
                           <div className="flex items-center gap-4">
-                            <button onClick={() => setLineHeight(Math.max(1.2, lineHeight - 0.2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700">-</button>
-                            <span className="flex-1 text-center font-bold">{lineHeight.toFixed(1)}</span>
-                            <button onClick={() => setLineHeight(Math.min(2.5, lineHeight + 0.2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700">+</button>
+                            <button onClick={() => setLineHeight(Math.max(1.2, lineHeight - 0.2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700 font-black">-</button>
+                            <span className="flex-1 text-center font-bold font-mono">{lineHeight.toFixed(1)}</span>
+                            <button onClick={() => setLineHeight(Math.min(2.5, lineHeight + 0.2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700 font-black">+</button>
                           </div>
                         </div>
                       </div>
@@ -734,17 +734,17 @@ export const Reader: React.FC = () => {
         onClick={() => setShowControls(!showControls)}
       >
         {isPremiumLocked ? (
-          <div className="flex flex-col items-center justify-center h-full space-y-6 text-center px-4 w-full max-w-md mx-auto my-auto py-32">
-            <div className="w-24 h-24 bg-amber-500/10 rounded-full flex items-center justify-center mb-4">
+          <div className="flex flex-col items-center justify-center h-full space-y-6 text-center px-4 w-full max-w-md mx-auto my-auto py-32 text-right">
+            <div className="w-24 h-24 bg-amber-500/10 rounded-full flex items-center justify-center mb-4 mx-auto">
               <Lock className="w-12 h-12 text-amber-500" />
             </div>
-            <h2 className="text-3xl font-black uppercase tracking-tighter">Premium Chapter</h2>
-            <p className="text-zinc-400">This chapter requires coins to unlock. Support the creator to continue reading!</p>
+            <h2 className="text-3xl font-black uppercase tracking-tighter text-center">فصل بريميوم (مدفوع)</h2>
+            <p className="text-zinc-400 text-center">يتطلب هذا الفصل عملات لفتحه. ادعم الكاتب/الرسام لمواصلة القراءة الممتعة!</p>
             <button 
               onClick={(e) => { e.stopPropagation(); handleUnlockChapter(); }} 
               className="flex items-center gap-3 px-8 py-4 bg-amber-500 text-black font-black rounded-2xl hover:scale-105 transition-all shadow-xl shadow-amber-500/20 w-full justify-center mt-4"
             >
-              <Coins className="w-5 h-5" /> Unlock for {chapter.coinPrice} Coins
+              <Coins className="w-5 h-5 animate-pulse" /> فتح الفصل مقابل {chapter.coinPrice} عملة
             </button>
           </div>
         ) : series.type === 'Novel' ? (
@@ -760,21 +760,21 @@ export const Reader: React.FC = () => {
             {/* End of Chapter Actions */}
             <div className="m3-section-gap text-center space-y-8">
               <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
-              <h2 className="text-3xl font-black tracking-tighter uppercase italic text-zinc-500">End of Chapter</h2>
+              <h2 className="text-3xl font-black tracking-tighter uppercase italic text-zinc-500">نهاية الفصل</h2>
               
               {/* Tip Creator Section */}
-              <div className="bg-zinc-900/50 border border-amber-500/20 rounded-3xl p-8 max-w-md mx-auto space-y-6">
+              <div className="bg-zinc-900/50 border border-amber-500/20 rounded-3xl p-8 max-w-md mx-auto space-y-6 text-right">
                 <div className="flex items-center justify-center gap-3 text-amber-500">
-                  <Heart className="w-6 h-6 fill-amber-500" />
-                  <h3 className="text-xl font-black uppercase tracking-tight">Support Creator</h3>
+                  <Heart className="w-6 h-6 fill-amber-500 animate-pulse" />
+                  <h3 className="text-xl font-black uppercase tracking-tight text-center">ادعم الكاتب/الرسام</h3>
                 </div>
-                <p className="text-sm text-zinc-400">Enjoyed the chapter? Show your appreciation by tipping coins to the creator!</p>
+                <p className="text-sm text-zinc-400 text-center">هل أعجبك هذا الفصل؟ أظهر دعمك عن طريق إرسال بعض العملات للكاتب/الرسام!</p>
                 <div className="flex flex-wrap justify-center gap-3">
                   {[10, 50, 100].map(amount => (
                     <button
                       key={amount}
                       onClick={(e) => { e.stopPropagation(); handleTipCreator(amount); }}
-                      className="flex items-center gap-2 px-6 py-3 bg-zinc-950 border border-amber-500/30 hover:bg-amber-500 hover:text-black text-amber-500 font-bold rounded-xl transition-all"
+                      className="flex items-center gap-2 px-6 py-3 bg-zinc-950 border border-amber-500/30 hover:bg-amber-500 hover:text-black text-amber-500 font-bold rounded-xl transition-all font-mono"
                     >
                       <Coins className="w-4 h-4" /> {amount}
                     </button>
@@ -782,21 +782,21 @@ export const Reader: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
-                {prevChapter && (
-                  <button 
-                    onClick={() => navigate(`/series/${slug}/${prevChapter.chapterNumber}`)}
-                    className="flex items-center gap-3 px-8 py-4 bg-zinc-900 text-white font-black rounded-2xl hover:bg-zinc-800 transition-all border border-white/5 w-full sm:w-auto justify-center"
-                  >
-                    <ChevronLeft className="w-5 h-5" /> Previous Chapter
-                  </button>
-                )}
+              <div className="flex flex-col sm:flex-row-reverse gap-6 justify-center items-center">
                 {nextChapter && (
                   <button 
                     onClick={() => navigate(`/series/${slug}/${nextChapter.chapterNumber}`)}
                     className="flex items-center gap-3 px-12 py-5 bg-emerald-500 text-black font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-emerald-500/20 w-full sm:w-auto justify-center"
                   >
-                    Next Chapter <ChevronRight className="w-5 h-5" />
+                    الفصل التالي <ChevronRight className="w-5 h-5 rotate-180" />
+                  </button>
+                )}
+                {prevChapter && (
+                  <button 
+                    onClick={() => navigate(`/series/${slug}/${prevChapter.chapterNumber}`)}
+                    className="flex items-center gap-3 px-8 py-4 bg-zinc-900 text-white font-black rounded-2xl hover:bg-zinc-800 transition-all border border-white/5 w-full sm:w-auto justify-center"
+                  >
+                    <ChevronLeft className="w-5 h-5 rotate-180" /> الفصل السابق
                   </button>
                 )}
                 {!nextChapter && (
@@ -804,7 +804,7 @@ export const Reader: React.FC = () => {
                     onClick={() => navigate(`/series/${series.slug}`)}
                     className="flex items-center gap-3 px-8 py-4 bg-zinc-900 text-white font-black rounded-2xl hover:bg-zinc-800 transition-all border border-white/5 w-full sm:w-auto justify-center"
                   >
-                    Back to Series
+                    العودة للتفاصيل
                   </button>
                 )}
               </div>
@@ -832,16 +832,16 @@ export const Reader: React.FC = () => {
             {/* End of Chapter Actions */}
             <div className="m3-section-gap px-4 text-center space-y-8">
               <div className="h-px w-full bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
-              <h2 className="text-3xl font-black tracking-tighter uppercase italic text-zinc-500">End of Chapter</h2>
+              <h2 className="text-3xl font-black tracking-tighter uppercase italic text-zinc-500">نهاية الفصل</h2>
               
               {/* Tip Creator Section */}
-              <div className="bg-zinc-900/50 border border-amber-500/20 rounded-3xl p-8 max-w-md mx-auto space-y-6">
+              <div className="bg-zinc-900/50 border border-amber-500/20 rounded-3xl p-8 max-w-md mx-auto space-y-6 text-right">
                 <div className="flex items-center justify-center gap-3 text-amber-500">
                   <Heart className="w-6 h-6 fill-amber-500" />
-                  <h3 className="text-xl font-black uppercase tracking-tight">Support Creator</h3>
+                  <h3 className="text-xl font-black uppercase tracking-tight text-center">ادعم الكاتب/الرسام</h3>
                 </div>
-                <p className="text-sm text-zinc-400">Enjoyed the chapter? Show your appreciation by tipping coins to the creator!</p>
-                <div className="flex flex-wrap justify-center gap-3">
+                <p className="text-sm text-zinc-400 text-center">هل أعجبك هذا الفصل؟ أظهر دعمك عن طريق إرسال بعض العملات للكاتب/الرسام!</p>
+                <div className="flex flex-wrap justify-center gap-3 font-mono">
                   {[10, 50, 100].map(amount => (
                     <button
                       key={amount}
@@ -854,21 +854,21 @@ export const Reader: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
-                {prevChapter && (
-                  <button 
-                    onClick={() => navigate(`/series/${slug}/${prevChapter.chapterNumber}`)}
-                    className="flex items-center gap-3 px-8 py-4 bg-zinc-900 text-white font-black rounded-2xl hover:bg-zinc-800 transition-all border border-white/5 w-full sm:w-auto justify-center"
-                  >
-                    <ChevronLeft className="w-5 h-5" /> Previous Chapter
-                  </button>
-                )}
+              <div className="flex flex-col sm:flex-row-reverse gap-6 justify-center items-center">
                 {nextChapter && (
                   <button 
                     onClick={() => navigate(`/series/${slug}/${nextChapter.chapterNumber}`)}
                     className="flex items-center gap-3 px-12 py-5 bg-emerald-500 text-black font-black rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl shadow-emerald-500/20 w-full sm:w-auto justify-center"
                   >
-                    Next Chapter <ChevronRight className="w-5 h-5" />
+                    الفصل التالي <ChevronRight className="w-5 h-5 rotate-180" />
+                  </button>
+                )}
+                {prevChapter && (
+                  <button 
+                    onClick={() => navigate(`/series/${slug}/${prevChapter.chapterNumber}`)}
+                    className="flex items-center gap-3 px-8 py-4 bg-zinc-900 text-white font-black rounded-2xl hover:bg-zinc-800 transition-all border border-white/5 w-full sm:w-auto justify-center"
+                  >
+                    <ChevronLeft className="w-5 h-5 rotate-180" /> الفصل السابق
                   </button>
                 )}
                 {!nextChapter && (
@@ -876,7 +876,7 @@ export const Reader: React.FC = () => {
                     onClick={() => navigate(`/series/${series.slug}`)}
                     className="flex items-center gap-3 px-8 py-4 bg-zinc-900 text-white font-black rounded-2xl hover:bg-zinc-800 transition-all border border-white/5 w-full sm:w-auto justify-center"
                   >
-                    Back to Series
+                    العودة للتفاصيل
                   </button>
                 )}
               </div>
@@ -940,7 +940,7 @@ export const Reader: React.FC = () => {
             onClick={(e) => { e.stopPropagation(); navigate(`/series/${slug}/${Number(chapterNum) - 1}`); }}
             className="flex-1 flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 bg-zinc-900 rounded-xl sm:rounded-[1.5rem] font-black text-[9px] sm:text-[10px] uppercase tracking-widest disabled:opacity-20 hover:bg-zinc-800 transition-all border border-white/5"
           >
-            <ChevronLeft className="w-4 h-4" /> <span className="hidden xs:inline">Prev</span>
+            <ChevronLeft className="w-4 h-4 rotate-180" /> <span className="hidden xs:inline">السابق</span>
           </button>
           
           <div className="flex-[2] sm:flex-1">
@@ -948,14 +948,14 @@ export const Reader: React.FC = () => {
               <select 
                 value={chapterNum}
                 onChange={(e) => navigate(`/series/${slug}/${e.target.value}`)}
-                className="w-full bg-zinc-900 border border-white/5 rounded-xl sm:rounded-[1.5rem] px-4 sm:px-6 py-3 sm:py-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest focus:outline-none appearance-none cursor-pointer text-center hover:bg-zinc-800 transition-all"
+                className="w-full bg-zinc-900 border border-white/5 rounded-xl sm:rounded-[1.5rem] px-4 sm:px-6 py-3 sm:py-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest focus:outline-none appearance-none cursor-pointer text-center hover:bg-zinc-800 transition-all text-right"
                 dir="auto"
               >
                 {chapters.map(c => (
-                  <option key={c.id} value={c.chapterNumber}>Ch. {c.chapterNumber} {c.title ? `- ${c.title}` : ''}</option>
+                  <option key={c.id} value={c.chapterNumber}>الفصل {c.chapterNumber} {c.title ? `- ${c.title}` : ''}</option>
                 ))}
               </select>
-              <div className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 pointer-events-none">
+              <div className="absolute left-4 sm:left-6 top-1/2 -translate-y-1/2 pointer-events-none">
                 <List className="w-3 h-3 text-zinc-500" />
               </div>
             </div>
@@ -966,7 +966,7 @@ export const Reader: React.FC = () => {
             onClick={(e) => { e.stopPropagation(); navigate(`/series/${slug}/${Number(chapterNum) + 1}`); }}
             className="flex-1 flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 bg-emerald-500 text-black rounded-xl sm:rounded-[1.5rem] font-black text-[9px] sm:text-[10px] uppercase tracking-widest disabled:opacity-20 hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20"
           >
-            <span className="hidden xs:inline">Next</span> <ChevronRight className="w-4 h-4" />
+            <span className="hidden xs:inline">التالي</span> <ChevronRight className="w-4 h-4 rotate-180" />
           </button>
         </div>
       </motion.div>
@@ -1002,7 +1002,7 @@ export const Reader: React.FC = () => {
               className="fixed top-0 left-0 bottom-0 w-80 bg-zinc-950 border-r border-white/5 z-[70] flex flex-col shadow-2xl"
             >
               <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                <h3 className="font-black uppercase tracking-widest text-lg">Chapters</h3>
+                <h3 className="font-black uppercase tracking-widest text-[16px]">قائمة الفصول</h3>
                 <button 
                   onClick={() => setShowSidebar(false)}
                   className="p-2 hover:bg-white/5 rounded-xl transition-colors"
@@ -1018,14 +1018,14 @@ export const Reader: React.FC = () => {
                       navigate(`/series/${slug}/${c.chapterNumber}`);
                       setShowSidebar(false);
                     }}
-                    className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between ${
+                    className={`w-full text-right px-4 py-3 rounded-xl transition-all flex items-center justify-between ${
                       c.chapterNumber === Number(chapterNum)
                         ? 'bg-emerald-500/10 text-emerald-500 font-bold border border-emerald-500/20'
                         : 'hover:bg-white/5 text-zinc-400 hover:text-white'
                     }`}
                   >
-                    <span dir="auto">Chapter {c.chapterNumber} {c.title ? `- ${c.title}` : ''}</span>
-                    {c.chapterNumber === Number(chapterNum) && <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 ml-2" />}
+                    <span dir="auto">الفصل {c.chapterNumber} {c.title ? `- ${c.title}` : ''}</span>
+                    {c.chapterNumber === Number(chapterNum) && <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mr-2" />}
                   </button>
                 ))}
               </div>
@@ -1052,7 +1052,7 @@ export const Reader: React.FC = () => {
               className="fixed top-0 right-0 bottom-0 w-full sm:w-96 bg-zinc-950 border-l border-white/5 z-[70] flex flex-col shadow-2xl"
             >
               <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                <h3 className="font-black uppercase tracking-widest text-lg">Comments ({commentsCount})</h3>
+                <h3 className="font-black uppercase tracking-widest text-[16px]">التعليقات ({commentsCount})</h3>
                 <button 
                   onClick={() => setShowComments(false)}
                   className="p-2 hover:bg-white/5 rounded-xl transition-colors"
