@@ -4,7 +4,9 @@ import fs from "fs";
 import { createClient } from "@libsql/client";
 
 // Database storage location matching app configuration
-const DB_PATH = path.join(process.cwd(), "manga_reader.db");
+const DB_PATH = process.env.VERCEL 
+  ? path.join("/tmp", "manga_reader.db") 
+  : path.join(process.cwd(), "manga_reader.db");
 
 // Initialize Database
 let dbInstance: Database.Database | null = null;
