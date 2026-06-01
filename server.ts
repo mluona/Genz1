@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import * as cheerio from "cheerio";
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import crypto from "crypto";
 import { initDb, executeQuery } from "./server-db";
 
 puppeteer.use(StealthPlugin());
@@ -17,9 +18,24 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Secure Password Hashing & Verification via Node.js Native PBKDF2
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash: string): boolean {
+  const parts = storedHash.split(":");
+  if (parts.length !== 2) return false;
+  const [salt, hash] = parts;
+  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, "sha512").toString("hex");
+  return hash === verifyHash;
+}
+
 async function startServer() {
   // Initialize highly persistent SQLite database schema and seed data
-  initDb();
+  await initDb();
 
   const app = express();
   const PORT = 3000;
@@ -29,6 +45,415 @@ async function startServer() {
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // ==========================================
+  // REAL FULL-STACK SECURE AUTHENTICATION ENDPOINTS
+  // ==========================================
+
+  // 1. Email Sign Up Endpoint
+  app.post("/api/auth/signup", async (req, res) => {
+    try {
+      const { email, password, username } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "البريد الإلكتروني وكلمة المرور مطلوبان!" });
+      }
+
+      // Check if user already exists
+      const checkRes = await executeQuery("profiles", "select", [{ field: "email", op: "=", val: email }]);
+      if (checkRes.data && checkRes.data.length > 0) {
+        return res.status(400).json({ error: "البريد الإلكتروني مسجل بالفعل!" });
+      }
+
+      const userId = "usr_" + Math.random().toString(36).substring(2, 11);
+      const passHash = hashPassword(password);
+      const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`;
+
+      const defaultProfile = {
+        id: userId,
+        uid: userId,
+        username: username || email.split("@")[0],
+        email,
+        bio: "Reading is life.",
+        profilePicture: avatarUrl,
+        role: (email === "aynmluona@gmail.com" || email === "genz-manga@gmail.com") ? "admin" : "user",
+        favorites: [],
+        history: [],
+        bookmarks: [],
+        banned: 0,
+        coins: 1000,
+        password_hash: passHash
+      };
+
+      const result = await executeQuery("profiles", "insert", [], null, true, null, false, false, defaultProfile);
+      if (result.error) {
+        throw new Error(result.error.message);
+      }
+
+      const user = {
+        id: userId,
+        uid: userId,
+        email,
+        user_metadata: {
+          full_name: defaultProfile.username,
+          avatar_url: defaultProfile.profilePicture
+        },
+        created_at: new Date().toISOString()
+      };
+
+      res.json({ user });
+    } catch (err: any) {
+      console.error("[Auth Signup Error]:", err);
+      res.status(500).json({ error: err.message || "فشلت عملية إنشاء الحساب." });
+    }
+  });
+
+  // 2. Email Sign In Endpoint
+  app.post("/api/auth/signin", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ error: "البريد الإلكتروني وكلمة المرور مطلوبان!" });
+      }
+
+      const checkRes = await executeQuery("profiles", "select", [{ field: "email", op: "=", val: email }]);
+      const profile = checkRes.data && checkRes.data.length > 0 ? checkRes.data[0] : null;
+
+      if (!profile || !profile.password_hash) {
+        return res.status(400).json({ error: "البريد الإلكتروني أو كلمة المرور غير صحيحة!" });
+      }
+
+      const isMatch = verifyPassword(password, profile.password_hash);
+      if (!isMatch) {
+        return res.status(400).json({ error: "البريد الإلكتروني أو كلمة المرور غير صحيحة!" });
+      }
+
+      if (profile.banned) {
+        return res.status(403).json({ error: "الحساب الخاص بك محظور!" });
+      }
+
+      const user = {
+        id: profile.id,
+        uid: profile.uid,
+        email: profile.email,
+        user_metadata: {
+          full_name: profile.username,
+          avatar_url: profile.profilePicture
+        },
+        created_at: new Date().toISOString()
+      };
+
+      res.json({ user });
+    } catch (err: any) {
+      console.error("[Auth Signin Error]:", err);
+      res.status(500).json({ error: err.message || "فشلت عملية تسجيل الدخول." });
+    }
+  });
+
+  // 3. Construct OAuth dynamic Provider URLs
+  app.get("/api/auth/url", (req, res) => {
+    const { provider, redirect_uri } = req.query;
+    if (!provider || typeof provider !== "string") {
+      return res.status(400).json({ error: "Provider is required" });
+    }
+    if (!redirect_uri || typeof redirect_uri !== "string") {
+      return res.status(400).json({ error: "redirect_uri is required" });
+    }
+
+    if (provider === "google") {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        return res.json({ error_missing_env: "GOOGLE_CLIENT_ID" });
+      }
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirect_uri,
+        response_type: "code",
+        scope: "openid email profile",
+        prompt: "select_account"
+      });
+      return res.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
+    }
+
+    if (provider === "discord") {
+      const clientId = process.env.DISCORD_CLIENT_ID;
+      if (!clientId) {
+        return res.json({ error_missing_env: "DISCORD_CLIENT_ID" });
+      }
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirect_uri,
+        response_type: "code",
+        scope: "identify email"
+      });
+      return res.json({ url: `https://discord.com/api/oauth2/authorize?${params.toString()}` });
+    }
+
+    return res.status(400).json({ error: "Unsupported provider" });
+  });
+
+  // 4. Google OAuth Redirect Callback Endpoint
+  app.get(["/auth/callback/google", "/auth/callback/google/"], async (req, res) => {
+    const { code } = req.query;
+    if (!code || typeof code !== "string") {
+      return res.send(`
+        <html>
+          <body style="font-family: sans-serif; text-align: center; padding: 2rem; background: #121214; color: #fff;">
+            <p style="color: #ef4444; font-weight: bold; font-size: 1.2rem;">خطأ في تسجيل الدخول</p>
+            <p style="color: #a1a1aa;">كود المصادقة مفقود أو غير صالح.</p>
+            <script>setTimeout(() => window.close(), 5000);</script>
+          </body>
+        </html>
+      `);
+    }
+
+    try {
+      const googleClientId = process.env.GOOGLE_CLIENT_ID;
+      const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      
+      if (!googleClientId || !googleClientSecret) {
+        throw new Error("الرجاء تحديد GOOGLE_CLIENT_ID و GOOGLE_CLIENT_SECRET في إعدادات البيئة بـ AI Studio لإكمال إعداد جوجل.");
+      }
+
+      // Reconstruct the exact redirect URI used by client
+      const host = req.headers.host || "localhost:3000";
+      const protocol = req.headers["x-forwarded-proto"] || "http";
+      const redirectUri = `${protocol}://${host}/auth/callback/google`;
+
+      // Token exchange
+      const tokenRes = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
+        code,
+        client_id: googleClientId,
+        client_secret: googleClientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code"
+      }).toString(), {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+      });
+
+      const { access_token } = tokenRes.data;
+
+      // Profile fetch
+      const userRes = await axios.get("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+
+      const { id: googleId, email, name, picture } = userRes.data;
+
+      if (!email) {
+        throw new Error("تعذر الحصول على البريد الإلكتروني من حساب جوجل الخاص بك.");
+      }
+
+      // Check user in database by google_id first, then by email
+      let profileResult = await executeQuery("profiles", "select", [{ field: "google_id", op: "=", val: googleId }]);
+      let profile = profileResult.data && profileResult.data.length > 0 ? profileResult.data[0] : null;
+
+      if (!profile) {
+        // Fallback search by email
+        profileResult = await executeQuery("profiles", "select", [{ field: "email", op: "=", val: email }]);
+        profile = profileResult.data && profileResult.data.length > 0 ? profileResult.data[0] : null;
+      }
+
+      const userId = profile ? profile.id : "usr_" + Math.random().toString(36).substring(2, 11);
+      const defaultProfile = {
+        id: userId,
+        uid: userId,
+        username: profile?.username || name || email.split("@")[0],
+        email,
+        bio: profile?.bio || "Reading is life.",
+        profilePicture: profile?.profilePicture || picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`,
+        role: profile?.role || ((email === "aynmluona@gmail.com" || email === "genz-manga@gmail.com") ? "admin" : "user"),
+        favorites: profile?.favorites || [],
+        history: profile?.history || [],
+        bookmarks: profile?.bookmarks || [],
+        banned: profile?.banned ? 1 : 0,
+        coins: profile?.coins !== undefined ? profile.coins : 1000,
+        google_id: googleId
+      };
+
+      // Upsert to DB
+      await executeQuery("profiles", "insert", [], null, true, null, false, false, defaultProfile);
+
+      if (defaultProfile.banned) {
+        throw new Error("عذراً، هذا الحساب محظور.");
+      }
+
+      const user = {
+        id: userId,
+        uid: userId,
+        email,
+        user_metadata: {
+          full_name: defaultProfile.username,
+          avatar_url: defaultProfile.profilePicture
+        },
+        created_at: new Date().toISOString()
+      };
+
+      // Send to callback parent
+      return res.send(`
+        <html>
+          <body style="font-family: sans-serif; text-align: center; padding: 2rem; background: #121214; color: #fff;">
+            <p style="color: #10b981; font-weight: bold; font-size: 1.2rem;">تم تسجيل الدخول بنجاح!</p>
+            <p style="color: #a1a1aa;">يرجى الانتظار، يتم الآن إغلاق النافذة والعودة إلى التطبيق تلقائياً...</p>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', user: ${JSON.stringify(user)} }, '*');
+                window.close();
+              } else {
+                localStorage.setItem("session_user", '${JSON.stringify(user)}');
+                window.location.href = '/';
+              }
+            </script>
+          </body>
+        </html>
+      `);
+    } catch (err: any) {
+      console.error("[Google OAuth Callback Error]:", err);
+      const errorMsg = err.response?.data?.error_description || err.message || "حدث خطأ غير معروف";
+      return res.send(`
+        <html>
+          <body style="font-family: sans-serif; text-align: center; padding: 2rem; background: #121214; color: #fff;">
+            <p style="color: #ef4444; font-weight: bold; font-size: 1.2rem;">فشل تسجيل الدخول من خلال جوجل</p>
+            <p style="color: #a1a1aa; margin-bottom: 1.5rem;">${errorMsg}</p>
+            <button onclick="window.close()" style="background: #10b981; color: #000; font-weight: bold; border: none; padding: 0.6rem 1.2rem; border-radius: 0.5rem; cursor: pointer;">إغلاق النافذة</button>
+          </body>
+        </html>
+      `);
+    }
+  });
+
+  // 5. Discord OAuth Redirect Callback Endpoint
+  app.get(["/auth/callback/discord", "/auth/callback/discord/"], async (req, res) => {
+    const { code } = req.query;
+    if (!code || typeof code !== "string") {
+      return res.send(`
+        <html>
+          <body style="font-family: sans-serif; text-align: center; padding: 2rem; background: #121214; color: #fff;">
+            <p style="color: #ef4444; font-weight: bold; font-size: 1.2rem;">خطأ في تسجيل الدخول</p>
+            <p style="color: #a1a1aa;">كود المصادقة مفقود أو غير صالح.</p>
+            <script>setTimeout(() => window.close(), 5000);</script>
+          </body>
+        </html>
+      `);
+    }
+
+    try {
+      const discordClientId = process.env.DISCORD_CLIENT_ID;
+      const discordClientSecret = process.env.DISCORD_CLIENT_SECRET;
+      
+      if (!discordClientId || !discordClientSecret) {
+        throw new Error("الرجاء تحديد DISCORD_CLIENT_ID و DISCORD_CLIENT_SECRET في إعدادات البيئة بـ AI Studio لإكمال إعداد ديسكورد.");
+      }
+
+      // Reconstruct the exact redirect URI used by client
+      const host = req.headers.host || "localhost:3000";
+      const protocol = req.headers["x-forwarded-proto"] || "http";
+      const redirectUri = `${protocol}://${host}/auth/callback/discord`;
+
+      // Token exchange
+      const tokenRes = await axios.post("https://discord.com/api/oauth2/token", new URLSearchParams({
+        code,
+        client_id: discordClientId,
+        client_secret: discordClientSecret,
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code"
+      }).toString(), {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+      });
+
+      const { access_token } = tokenRes.data;
+
+      // Profile fetch
+      const userRes = await axios.get("https://discord.com/api/users/@me", {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+
+      const { id: discordId, username, email, avatar } = userRes.data;
+
+      if (!email) {
+        throw new Error("تعذر الحصول على البريد الإلكتروني من حساب ديسكورد الخاص بك.");
+      }
+
+      // Avatar construction
+      const avatarUrl = avatar 
+        ? `https://cdn.discordapp.com/avatars/${discordId}/${avatar}.png` 
+        : `https://api.dicebear.com/7.x/avataaars/svg?seed=${discordId}`;
+
+      // Check user in database by discord_id first, then by email
+      let profileResult = await executeQuery("profiles", "select", [{ field: "discord_id", op: "=", val: discordId }]);
+      let profile = profileResult.data && profileResult.data.length > 0 ? profileResult.data[0] : null;
+
+      if (!profile) {
+        profileResult = await executeQuery("profiles", "select", [{ field: "email", op: "=", val: email }]);
+        profile = profileResult.data && profileResult.data.length > 0 ? profileResult.data[0] : null;
+      }
+
+      const userId = profile ? profile.id : "usr_" + Math.random().toString(36).substring(2, 11);
+      const defaultProfile = {
+        id: userId,
+        uid: userId,
+        username: profile?.username || username || email.split("@")[0],
+        email,
+        bio: profile?.bio || "Reading is life.",
+        profilePicture: profile?.profilePicture || avatarUrl,
+        role: profile?.role || ((email === "aynmluona@gmail.com" || email === "genz-manga@gmail.com") ? "admin" : "user"),
+        favorites: profile?.favorites || [],
+        history: profile?.history || [],
+        bookmarks: profile?.bookmarks || [],
+        banned: profile?.banned ? 1 : 0,
+        coins: profile?.coins !== undefined ? profile.coins : 1000,
+        discord_id: discordId
+      };
+
+      // Upsert to DB
+      await executeQuery("profiles", "insert", [], null, true, null, false, false, defaultProfile);
+
+      if (defaultProfile.banned) {
+        throw new Error("عذراً، هذا الحساب محظور.");
+      }
+
+      const user = {
+        id: userId,
+        uid: userId,
+        email,
+        user_metadata: {
+          full_name: defaultProfile.username,
+          avatar_url: defaultProfile.profilePicture
+        },
+        created_at: new Date().toISOString()
+      };
+
+      // Send to callback parent
+      return res.send(`
+        <html>
+          <body style="font-family: sans-serif; text-align: center; padding: 2rem; background: #121214; color: #fff;">
+            <p style="color: #10b981; font-weight: bold; font-size: 1.2rem;">تم تسجيل الدخول بنجاح!</p>
+            <p style="color: #a1a1aa;">يرجى الانتظار، يتم الآن إغلاق النافذة والعودة إلى التطبيق تلقائياً...</p>
+            <script>
+              if (window.opener) {
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', user: ${JSON.stringify(user)} }, '*');
+                window.close();
+              } else {
+                localStorage.setItem("session_user", '${JSON.stringify(user)}');
+                window.location.href = '/';
+              }
+            </script>
+          </body>
+        </html>
+      `);
+    } catch (err: any) {
+      console.error("[Discord OAuth Callback Error]:", err);
+      const errorMsg = err.response?.data?.error_description || err.message || "حدث خطأ غير معروف";
+      return res.send(`
+        <html>
+          <body style="font-family: sans-serif; text-align: center; padding: 2rem; background: #121214; color: #fff;">
+            <p style="color: #ef4444; font-weight: bold; font-size: 1.2rem;">فشل تسجيل الدخول من خلال ديسكورد</p>
+            <p style="color: #a1a1aa; margin-bottom: 1.5rem;">${errorMsg}</p>
+            <button onclick="window.close()" style="background: #10b981; color: #000; font-weight: bold; border: none; padding: 0.6rem 1.2rem; border-radius: 0.5rem; cursor: pointer;">إغلاق النافذة</button>
+          </body>
+        </html>
+      `);
+    }
   });
 
   // Dynamic parameterized SQLite Query Bridge handler

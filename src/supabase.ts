@@ -269,47 +269,20 @@ export const supabase = {
 
     async signUp({ email, password, options }: any) {
       try {
-        const checkRes = await supabase.from("profiles").select("*").eq("email", email).maybeSingle();
-        if (checkRes?.data) {
-          throw new Error("User email already registered!");
+        const username = options?.data?.full_name || email.split("@")[0];
+        const response = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, username })
+        });
+        const result = await response.json();
+        if (!response.ok || result.error) {
+          throw new Error(result.error || "فشل تسجيل حساب جديد");
         }
-
-        const userId = "usr_" + Math.random().toString(36).substring(2, 11);
-        const user = {
-          id: userId,
-          uid: userId,
-          email,
-          user_metadata: options?.data || {
-            full_name: email.split("@")[0],
-            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`
-          },
-          created_at: new Date().toISOString()
-        };
-
-        const defaultProfile = {
-          id: userId,
-          uid: userId,
-          username: user.user_metadata.full_name || email.split("@")[0],
-          email,
-          bio: "Reading is life.",
-          profilePicture: user.user_metadata.avatar_url,
-          role: (email === "aynmluona@gmail.com" || email === "genz-manga@gmail.com") ? "admin" : "user",
-          favorites: [],
-          history: [],
-          bookmarks: [],
-          banned: false,
-          coins: 1000
-        };
-
-        const insertRes = await supabase.from("profiles").insert(defaultProfile);
-        if (insertRes.error) {
-          throw new Error(insertRes.error.message);
-        }
-
+        const user = result.user;
         setSessionUser(user);
         const session = { user, access_token: "local_token" };
         authListeners.forEach(listener => listener("SIGNED_IN", session));
-
         return { data: { user, session }, error: null };
       } catch (e: any) {
         return { data: null, error: { message: e.message || String(e) } };
@@ -318,46 +291,19 @@ export const supabase = {
 
     async signInWithPassword({ email, password }: any) {
       try {
-        const checkRes = await supabase.from("profiles").select("*").eq("email", email).maybeSingle();
-        let profile = checkRes?.data;
-
-        const userId = profile ? profile.id : "usr_" + Math.random().toString(36).substring(2, 11);
-        const user = {
-          id: userId,
-          uid: userId,
-          email,
-          user_metadata: {
-            full_name: profile?.username || email.split("@")[0],
-            avatar_url: profile?.profilePicture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`
-          },
-          created_at: new Date().toISOString()
-        };
-
-        if (!profile) {
-          const defaultProfile = {
-            id: userId,
-            uid: userId,
-            username: user.user_metadata.full_name,
-            email,
-            bio: "Reading is life.",
-            profilePicture: user.user_metadata.avatar_url,
-            role: (email === "aynmluona@gmail.com" || email === "genz-manga@gmail.com") ? "admin" : "user",
-            favorites: [],
-            history: [],
-            bookmarks: [],
-            banned: false,
-            coins: 1000
-          };
-          const insertRes = await supabase.from("profiles").insert(defaultProfile);
-          if (insertRes.error) {
-            throw new Error(insertRes.error.message);
-          }
+        const response = await fetch("/api/auth/signin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
+        const result = await response.json();
+        if (!response.ok || result.error) {
+          throw new Error(result.error || "فشل تسجيل الدخول");
         }
-
+        const user = result.user;
         setSessionUser(user);
         const session = { user, access_token: "local_token" };
         authListeners.forEach(listener => listener("SIGNED_IN", session));
-
         return { data: { user, session }, error: null };
       } catch (e: any) {
         return { data: null, error: { message: e.message || String(e) } };
@@ -365,7 +311,69 @@ export const supabase = {
     },
 
     async signInWithOAuth({ provider }: any) {
-      return this.signInWithPassword({ email: "g-user@gmail.com", password: "oauthpassword" });
+      try {
+        // Construct the popup redirect uri matching our callback endpoint
+        const redirectUri = window.location.origin + `/auth/callback/${provider}`;
+        
+        // Fetch the provider OAuth URL from our server
+        const response = await fetch(`/api/auth/url?provider=${provider}&redirect_uri=${encodeURIComponent(redirectUri)}`);
+        const result = await response.json();
+        
+        if (result.error_missing_env) {
+          throw new Error(`يرجى تحديد المتغير ${result.error_missing_env} في إعدادات البيئة بـ AI Studio لتفعيل المصادقة عبر ${provider}.`);
+        }
+        if (result.error || !result.url) {
+          throw new Error(result.error || "تعذر الحصول على رابط المصادقة");
+        }
+        
+        // Open the OAuth provider in a popup window
+        const width = 600;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        const popup = window.open(
+          result.url,
+          `oauth-signin-${provider}`,
+          `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
+        );
+        
+        if (!popup) {
+          throw new Error("تم حظر النافذة المنبثقة! يرجى السماح بالنوافذ المنبثقة لتسجيل الدخول.");
+        }
+        
+        // Return a promise that resolves when the popup sends a postMessage
+        return new Promise((resolve) => {
+          let checkClosedTimer: any = null;
+          
+          const handleMessage = (event: MessageEvent) => {
+            if (event.data && event.data.type === "OAUTH_AUTH_SUCCESS") {
+              const user = event.data.user;
+              setSessionUser(user);
+              const session = { user, access_token: "local_token" };
+              authListeners.forEach(listener => listener("SIGNED_IN", session));
+              
+              window.removeEventListener("message", handleMessage);
+              if (checkClosedTimer) clearInterval(checkClosedTimer);
+              resolve({ data: { user, session }, error: null });
+            }
+          };
+          
+          window.addEventListener("message", handleMessage);
+          
+          // Poll to check if popup is closed without success
+          checkClosedTimer = setInterval(() => {
+            if (popup.closed) {
+              clearInterval(checkClosedTimer);
+              setTimeout(() => {
+                window.removeEventListener("message", handleMessage);
+                resolve({ data: null, error: { message: "تم إغلاق النافذة المنبثقة قبل إتمام تسجيل الدخول." } });
+              }, 1000);
+            }
+          }, 500);
+        });
+      } catch (e: any) {
+        return { data: null, error: { message: e.message || String(e) } };
+      }
     },
 
     async signOut() {

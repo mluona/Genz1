@@ -9,6 +9,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Series, Chapter } from '../types';
 import { getProxiedImageUrl } from '../utils/imageUtils';
 import { LoginModal } from '../components/LoginModal';
+import { SeriesCard } from '../components/SeriesCard';
+import { Sparkles } from 'lucide-react';
 
 export const SeriesDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -22,6 +24,7 @@ export const SeriesDetail: React.FC = () => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [similarWorks, setSimilarWorks] = useState<Series[]>([]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -142,7 +145,29 @@ export const SeriesDetail: React.FC = () => {
       }
     };
 
+    const fetchSimilarWorks = async () => {
+      try {
+        const { data } = await supabase.from('series').select('*');
+        if (data) {
+          const filtered = (data as Series[])
+            .filter(item => item.id !== series.id)
+            .map(item => {
+              const overlap = item.genres.filter(g => series.genres.includes(g)).length;
+              return { item, overlap };
+            })
+            .filter(x => x.overlap > 0)
+            .sort((a, b) => b.overlap - a.overlap)
+            .map(x => x.item)
+            .slice(0, 4);
+          setSimilarWorks(filtered);
+        }
+      } catch (error) {
+        console.error('Error fetching similar works:', error);
+      }
+    };
+
     fetchChaptersAndComments();
+    fetchSimilarWorks();
 
     // Real-time for chapters
     const chaptersChannel = supabase
@@ -161,20 +186,27 @@ export const SeriesDetail: React.FC = () => {
   if (!series) return <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">لم يتم العثور على العمل</div>;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white pb-20 selection:bg-emerald-500 selection:text-black">
+    <div className="min-h-screen bg-zinc-950 text-white pb-20 selection:bg-emerald-500 selection:text-black relative overflow-x-hidden">
       <LoginModal isOpen={isLoginModalOpen} onClose={() => setIsLoginModalOpen(false)} />
+      
+      {/* Custom premium background & gradient atmosphere orbs */}
       <div className="atmosphere" />
+      <div className="absolute inset-x-0 top-0 h-[1000px] bg-gradient-to-b from-emerald-500/10 via-blue-500/5 to-transparent blur-[120px] pointer-events-none z-0" />
+      <div className="absolute top-[25%] right-[-10%] w-[400px] h-[400px] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none z-0 animate-pulse duration-5000" />
+      <div className="absolute top-[45%] left-[-10%] w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none z-0" />
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:48px_48px] pointer-events-none z-0 [mask-image:radial-gradient(ellipse_at_top,white,transparent_80%)]" />
       
       {/* Immersive Header */}
       <div className="relative min-h-[60vh] lg:min-h-[70vh] flex flex-col justify-end overflow-hidden">
         {/* Background Cover */}
         <div className="absolute inset-0 z-0">
           <div 
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-30 blur-2xl scale-110"
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40 blur-3xl scale-125 transition-transform duration-1000"
             style={{ backgroundImage: `url(${series.backgroundImage || series.coverImage})` }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-zinc-950/20" />
-          <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-transparent to-transparent opacity-80" />
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/85 to-zinc-950/30" />
+          <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-transparent to-transparent opacity-90" />
+          <div className="absolute bottom-0 inset-x-0 h-40 bg-gradient-to-t from-zinc-950 to-transparent pointer-events-none" />
         </div>
 
         <div className="relative z-10 pt-32 pb-12 sm:pb-20">
@@ -386,26 +418,40 @@ export const SeriesDetail: React.FC = () => {
               </div>
             </div>
           </div>
-
-          {/* Ad or Promo Space */}
-          <div className="relative aspect-[4/5] rounded-[2rem] overflow-hidden group">
-            <img
-              src="https://picsum.photos/seed/promo/600/800"
-              alt="Promo"
-              className="w-full h-full object-cover opacity-50 group-hover:scale-110 transition-transform duration-1000"
-              referrerPolicy="no-referrer"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/80 to-transparent flex flex-col justify-end p-8">
-              <p className="text-black font-black text-2xl tracking-tighter leading-none mb-4 text-right">
-                انضم إلى <br /> ديسكورد الخاص بنا
-              </p>
-              <button className="w-full py-3 bg-black text-white rounded-xl font-black text-xs uppercase tracking-widest">
-                انضم الآن
-              </button>
-            </div>
-          </div>
         </div>
       </div>
+
+      {/* Similar Works Section */}
+      <AnimatePresence>
+        {similarWorks.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-20 pt-12 border-t border-white/5 space-y-8 text-right relative z-10"
+          >
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="p-2.5 bg-emerald-500/10 text-emerald-500 rounded-xl">
+                  <Sparkles className="w-5 h-5" />
+                </span>
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">أعمال مشابهة قد تعجبك</h2>
+                  <p className="text-xs text-zinc-500 mt-1">مقترحات بنفس التصنيف والأسلوب القصصي للعمل الحالي</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 pt-4">
+              {similarWorks.map((work) => (
+                <div key={work.id} className="transition-all duration-300 hover:-translate-y-1">
+                  <SeriesCard series={work} />
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Toast Message */}
       <AnimatePresence>

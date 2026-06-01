@@ -1,18 +1,47 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import { createClient } from "@libsql/client";
 
 // Database storage location matching app configuration
 const DB_PATH = path.join(process.cwd(), "manga_reader.db");
 
 // Initialize Database
 let dbInstance: Database.Database | null = null;
+let tursoClientInstance: ReturnType<typeof createClient> | null = null;
+let isTursoActive = true;
+
+export function getTursoClient() {
+  if (!process.env.TURSO_DATABASE_URL) return null;
+  if (!isTursoActive) return null;
+
+  const url = process.env.TURSO_DATABASE_URL;
+  const token = process.env.TURSO_AUTH_TOKEN || "";
+
+  // Safeguard: Check if we are still using placeholder configurations
+  if (
+    url.includes("your-database-name") ||
+    url.includes("your_turso") ||
+    token.includes("your-") ||
+    token.includes("your_turso")
+  ) {
+    return null;
+  }
+
+  if (!tursoClientInstance) {
+    tursoClientInstance = createClient({
+      url: url,
+      authToken: token,
+    });
+  }
+  return tursoClientInstance;
+}
 
 export function getDb(): Database.Database {
   if (!dbInstance) {
     dbInstance = new Database(DB_PATH);
-    // Enable performance optimizations
-    dbInstance.pragma("journal_mode = WAL");
+    // Enable performance optimizations with self-contained single-file storage
+    dbInstance.pragma("journal_mode = DELETE");
     dbInstance.pragma("synchronous = NORMAL");
     dbInstance.pragma("foreign_keys = ON");
   }
@@ -20,7 +49,385 @@ export function getDb(): Database.Database {
 }
 
 // Ensure database table structures exist and are seeded
-export function initDb() {
+export async function initDb() {
+  const turso = getTursoClient();
+
+  if (turso) {
+    console.log(`[Turso Init] Checking database tables for Turso Cloud...`);
+    try {
+      // 1. Create tables using independent executions
+      await turso.batch([
+        `CREATE TABLE IF NOT EXISTS profiles (
+          id TEXT PRIMARY KEY,
+          uid TEXT,
+          username TEXT,
+          email TEXT,
+          bio TEXT,
+          profilePicture TEXT,
+          role TEXT,
+          favorites TEXT, -- JSON Array
+          history TEXT,   -- JSON Array
+          bookmarks TEXT, -- JSON Array
+          banned INTEGER DEFAULT 0,
+          coins INTEGER DEFAULT 1000,
+          password_hash TEXT,
+          google_id TEXT,
+          discord_id TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS series (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          slug TEXT UNIQUE,
+          description TEXT,
+          coverImage TEXT,
+          backgroundImage TEXT,
+          status TEXT,
+          type TEXT,
+          genres TEXT, -- JSON
+          tags TEXT,   -- JSON
+          author TEXT,
+          artist TEXT,
+          releaseYear INTEGER,
+          rating REAL,
+          ratingCount INTEGER,
+          views INTEGER,
+          dailyViews INTEGER,
+          weeklyViews INTEGER,
+          monthlyViews INTEGER,
+          lastUpdated TEXT,
+          createdAt TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS chapters (
+          id TEXT PRIMARY KEY,
+          seriesId TEXT,
+          chapterNumber REAL,
+          title TEXT,
+          content TEXT, -- JSON List of page URLs
+          pageCount INTEGER,
+          publishDate TEXT,
+          views INTEGER,
+          createdAt TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS pages (
+          id TEXT PRIMARY KEY,
+          chapterId TEXT,
+          pageNumber INTEGER,
+          content TEXT,
+          createdAt TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS coin_packages (
+          id TEXT PRIMARY KEY,
+          name TEXT,
+          coins INTEGER,
+          price REAL,
+          currency TEXT,
+          bonusCoins INTEGER,
+          isActive INTEGER DEFAULT 1,
+          createdAt TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS static_pages (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          slug TEXT UNIQUE,
+          content TEXT,
+          lastUpdated TEXT,
+          createdAt TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS comments (
+          id TEXT PRIMARY KEY,
+          chapterId TEXT,
+          seriesId TEXT,
+          userId TEXT,
+          username TEXT,
+          avatarUrl TEXT,
+          content TEXT,
+          likes INTEGER DEFAULT 0,
+          dislikes INTEGER DEFAULT 0,
+          reports INTEGER DEFAULT 0,
+          isPinned INTEGER DEFAULT 0,
+          isApproved INTEGER DEFAULT 1,
+          createdAt TEXT
+        )`,
+        `CREATE TABLE IF NOT EXISTS transactions (
+          id TEXT PRIMARY KEY,
+          userId TEXT,
+          packageId TEXT,
+          amount REAL,
+          coins INTEGER,
+          status TEXT,
+          gateway TEXT,
+          referenceId TEXT,
+          createdAt TEXT
+        )`
+      ], "write");
+
+      // Indexes
+      await turso.execute(`CREATE INDEX IF NOT EXISTS idx_series_slug ON series(slug)`);
+      await turso.execute(`CREATE INDEX IF NOT EXISTS idx_chapters_series ON chapters(seriesId)`);
+      await turso.execute(`CREATE INDEX IF NOT EXISTS idx_pages_chapter ON pages(chapterId)`);
+      await turso.execute(`CREATE INDEX IF NOT EXISTS idx_comments_series ON comments(seriesId)`);
+      await turso.execute(`CREATE INDEX IF NOT EXISTS idx_comments_chapter ON comments(chapterId)`);
+
+      // Database Migrations to support Google, Discord, and Email logins
+      try { await turso.execute(`ALTER TABLE profiles ADD COLUMN password_hash TEXT`); } catch (_) {}
+      try { await turso.execute(`ALTER TABLE profiles ADD COLUMN google_id TEXT`); } catch (_) {}
+      try { await turso.execute(`ALTER TABLE profiles ADD COLUMN discord_id TEXT`); } catch (_) {}
+
+      // Check if seeding is needed
+      const countRowRes = await turso.execute("SELECT COUNT(*) as count FROM series");
+      const countRow = countRowRes.rows[0];
+      const count = countRow ? Number(countRow.count) : 0;
+
+      if (count === 0) {
+        console.log("[Turso Seed] No series data found. Running database seeding...");
+
+        // Seed Series
+        const seriesList = [
+          {
+            id: "sololeveling-id",
+            title: "Solo Leveling",
+            slug: "solo-leveling",
+            description: "In a world where hunters must battle deadly monsters to protect mankind, Sung Jin-Woo, weak and forgotten, discovers a mysterious system allowing him to grow without limits.",
+            coverImage: "https://picsum.photos/seed/sololeveling/400/600",
+            backgroundImage: "https://picsum.photos/seed/sololeveling-bg/1200/800",
+            status: "Ongoing",
+            type: "Manhwa",
+            genres: JSON.stringify(["Action", "Fantasy", "Adventure"]),
+            tags: JSON.stringify(["Overpowered", "Leveling", "Gates"]),
+            author: "Chugong",
+            artist: "DUBU (REDICE STUDIO)",
+            releaseYear: 2018,
+            rating: 4.9,
+            ratingCount: 1420,
+            views: 24500,
+            dailyViews: 120,
+            weeklyViews: 840,
+            monthlyViews: 3200,
+            lastUpdated: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: "tbate-id",
+            title: "The Beginning After The End",
+            slug: "the-beginning-after-the-end",
+            description: "King Grey has unrivaled strength, wealth, and prestige in a world governed by martial ability. However, solitude lingers closely behind those with great power. Reborn into a new world filled with magic and monsters, the king has a second chance to relive his life.",
+            coverImage: "https://picsum.photos/seed/tbate/400/600",
+            backgroundImage: "https://picsum.photos/seed/tbate-bg/1200/800",
+            status: "Ongoing",
+            type: "Manhwa",
+            genres: JSON.stringify(["Action", "Fantasy", "Isekai"]),
+            tags: JSON.stringify(["Reincarnation", "Magic", "Nobility"]),
+            author: "TurtleMe",
+            artist: "Fuyuki 23",
+            releaseYear: 2018,
+            rating: 4.8,
+            ratingCount: 890,
+            views: 18200,
+            dailyViews: 90,
+            weeklyViews: 610,
+            monthlyViews: 2400,
+            lastUpdated: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: "shadowhack-id",
+            title: "Shadow Hack",
+            slug: "shadow-hack",
+            description: "When Li Yunmu discovers a secret shadow-producing system, he unlocks the capability to farm experience points, learn ancient martial skills, and hack his way to peak power offline.",
+            coverImage: "https://picsum.photos/seed/shadowhack/400/600",
+            backgroundImage: "https://picsum.photos/seed/shadowhack-bg/1200/800",
+            status: "Completed",
+            type: "Novel",
+            genres: JSON.stringify(["Action", "Fantasy", "Martial Arts"]),
+            tags: JSON.stringify(["System", "Farming", "Cultivation"]),
+            author: "Water Ruined",
+            artist: "N/A",
+            releaseYear: 2017,
+            rating: 4.5,
+            ratingCount: 310,
+            views: 19400,
+            dailyViews: 30,
+            weeklyViews: 210,
+            monthlyViews: 850,
+            lastUpdated: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          }
+        ];
+
+        for (const s of seriesList) {
+          await turso.execute({
+            sql: `INSERT INTO series (
+              id, title, slug, description, coverImage, backgroundImage, status, type,
+              genres, tags, author, artist, releaseYear, rating, ratingCount, views,
+              dailyViews, weeklyViews, monthlyViews, lastUpdated, createdAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [
+              s.id, s.title, s.slug, s.description, s.coverImage, s.backgroundImage, s.status, s.type,
+              s.genres, s.tags, s.author, s.artist, s.releaseYear, s.rating, s.ratingCount, s.views,
+              s.dailyViews, s.weeklyViews, s.monthlyViews, s.lastUpdated, s.createdAt
+            ]
+          });
+        }
+
+        // Chapters List
+        const chaptersList = [
+          {
+            id: "sl-chapter-1-id",
+            seriesId: "sololeveling-id",
+            chapterNumber: 1.0,
+            title: "Chapter 1: The Weakest Hunter",
+            content: JSON.stringify([
+              "https://picsum.photos/seed/slch1-1/800/1200",
+              "https://picsum.photos/seed/slch1-2/800/1200",
+              "https://picsum.photos/seed/slch1-3/800/1200"
+            ]),
+            pageCount: 3,
+            publishDate: new Date().toISOString(),
+            views: 1205,
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: "sl-chapter-2-id",
+            seriesId: "sololeveling-id",
+            chapterNumber: 2.0,
+            title: "Chapter 2: Double Dungeon",
+            content: JSON.stringify([
+              "https://picsum.photos/seed/slch2-1/800/1200",
+              "https://picsum.photos/seed/slch2-2/800/1200"
+            ]),
+            pageCount: 2,
+            publishDate: new Date().toISOString(),
+            views: 980,
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: "tbate-chapter-1-id",
+            seriesId: "tbate-id",
+            chapterNumber: 1.0,
+            title: "Chapter 1: Rebirth Of A King",
+            content: JSON.stringify([
+              "https://picsum.photos/seed/tbate1-1/800/1200",
+              "https://picsum.photos/seed/tbate1-2/800/1200"
+            ]),
+            pageCount: 2,
+            publishDate: new Date().toISOString(),
+            views: 890,
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: "sh-chapter-1-id",
+            seriesId: "shadowhack-id",
+            chapterNumber: 1.0,
+            title: "Chapter 1: The Shadow Upgrade",
+            content: JSON.stringify([
+              "Li Yunmu sat looking out the window as the twilight set upon the city. He sighed deeply, clutching his archaic communication device in his hands. He was an ordinary youth from an ordinary family, struggling in a hyper-competitive post-apocalyptic earth. Little did he know that at this exact instant, a strange digital prompt was flashing in his field of view.",
+              "Choose option [YES / NO] to activate offline shadow farming. A cold, synthetic voice murmured in his mind. Stunned, he tapped YES, initiating a cycle of destiny that would elevate him to a deity."
+            ]),
+            pageCount: 2,
+            publishDate: new Date().toISOString(),
+            views: 450,
+            createdAt: new Date().toISOString()
+          }
+        ];
+
+        for (const ch of chaptersList) {
+          await turso.execute({
+            sql: `INSERT INTO chapters (
+              id, seriesId, chapterNumber, title, content, pageCount, publishDate, views, createdAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [
+              ch.id, ch.seriesId, ch.chapterNumber, ch.title, ch.content, ch.pageCount, ch.publishDate, ch.views, ch.createdAt
+            ]
+          });
+
+          const loadedContent = JSON.parse(ch.content);
+          for (let i = 0; i < loadedContent.length; i++) {
+            const pageId = `${ch.id}_p_${i}`;
+            await turso.execute({
+              sql: `INSERT INTO pages (id, chapterId, pageNumber, content, createdAt) VALUES (?, ?, ?, ?, ?)`,
+              args: [pageId, ch.id, i, loadedContent[i], new Date().toISOString()]
+            });
+          }
+        }
+
+        // Packages List
+        const packagesList = [
+          {
+            id: "pkg-1",
+            name: "Starter Pack",
+            coins: 100,
+            price: 0.99,
+            currency: "USD",
+            bonusCoins: 0,
+            isActive: 1,
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: "pkg-2",
+            name: "Value Saver Pack",
+            coins: 520,
+            price: 4.99,
+            currency: "USD",
+            bonusCoins: 20,
+            isActive: 1,
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: "pkg-3",
+            name: "Immortal Reader Pack",
+            coins: 1150,
+            price: 9.99,
+            currency: "USD",
+            bonusCoins: 150,
+            isActive: 1,
+            createdAt: new Date().toISOString()
+          }
+        ];
+
+        for (const p of packagesList) {
+          await turso.execute({
+            sql: `INSERT INTO coin_packages (id, name, coins, price, currency, bonusCoins, isActive, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            args: [p.id, p.name, p.coins, p.price, p.currency, p.bonusCoins, p.isActive, p.createdAt]
+          });
+        }
+
+        // Static Pages
+        const staticPages = [
+          {
+            id: "tos",
+            title: "Terms of Service",
+            slug: "terms",
+            content: "# Terms of Service\n\nWelcome to our Reader. By using our service, you agree to these terms...",
+            lastUpdated: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: "privacy",
+            title: "Privacy Policy",
+            slug: "privacy",
+            content: "# Privacy Policy\n\nWe respect your digital privacy. Your user account data stays protected...",
+            lastUpdated: new Date().toISOString(),
+            createdAt: new Date().toISOString()
+          }
+        ];
+
+        for (const sp of staticPages) {
+          await turso.execute({
+            sql: `INSERT INTO static_pages (id, title, slug, content, lastUpdated, createdAt) VALUES (?, ?, ?, ?, ?, ?)`,
+            args: [sp.id, sp.title, sp.slug, sp.content, sp.lastUpdated, sp.createdAt]
+          });
+        }
+
+        console.log("[Turso Seed] Seeding completed beautifully on Turso Cloud!");
+      }
+      return; // Return only if everything succeeded!
+    } catch (err) {
+      console.error("[Turso Init Error] Could not initialize Turso tables automatically:", err);
+      console.log("[Turso Fallback] Turning off Turso Cloud due to connection/authorization error. Falling back to local SQLite database...");
+      isTursoActive = false;
+    }
+  }
+
   const db = getDb();
   console.log(`[SQLite Init] Checking database tables at: ${DB_PATH}`);
 
@@ -40,7 +447,10 @@ export function initDb() {
         history TEXT,   -- JSON Array
         bookmarks TEXT, -- JSON Array
         banned INTEGER DEFAULT 0,
-        coins INTEGER DEFAULT 1000
+        coins INTEGER DEFAULT 1000,
+        password_hash TEXT,
+        google_id TEXT,
+        discord_id TEXT
       )
     `).run();
 
@@ -167,6 +577,11 @@ export function initDb() {
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_comments_series ON comments(seriesId)`).run();
     db.prepare(`CREATE INDEX IF NOT EXISTS idx_comments_chapter ON comments(chapterId)`).run();
   })();
+
+  // Database Migrations to support Google, Discord, and Email logins for local SQLite
+  try { db.prepare(`ALTER TABLE profiles ADD COLUMN password_hash TEXT`).run(); } catch (_) {}
+  try { db.prepare(`ALTER TABLE profiles ADD COLUMN google_id TEXT`).run(); } catch (_) {}
+  try { db.prepare(`ALTER TABLE profiles ADD COLUMN discord_id TEXT`).run(); } catch (_) {}
 
   // Seed default data if series is empty
   const countRow = db.prepare("SELECT COUNT(*) as count FROM series").get() as { count: number };
@@ -498,7 +913,7 @@ const isValidWord = (w: string) => /^[a-zA-Z0-9_]+$/.test(w);
 
 // High-performance static schema column whitelist for database operations
 const SCHEMA_COLUMNS: Record<string, string[]> = {
-  profiles: ["id", "uid", "username", "email", "bio", "profilePicture", "role", "favorites", "history", "bookmarks", "banned", "coins"],
+  profiles: ["id", "uid", "username", "email", "bio", "profilePicture", "role", "favorites", "history", "bookmarks", "banned", "coins", "password_hash", "google_id", "discord_id"],
   series: ["id", "title", "slug", "description", "coverImage", "backgroundImage", "status", "type", "genres", "tags", "author", "artist", "releaseYear", "rating", "ratingCount", "views", "dailyViews", "weeklyViews", "monthlyViews", "lastUpdated", "createdAt"],
   chapters: ["id", "seriesId", "chapterNumber", "title", "content", "pageCount", "publishDate", "views", "createdAt"],
   pages: ["id", "chapterId", "pageNumber", "content", "createdAt"],
@@ -520,13 +935,205 @@ export async function executeQuery(
   payload: any = null
 ): Promise<{ data: any; error: any; count?: number }> {
   try {
-    const db = getDb();
+    const turso = getTursoClient();
 
     if (!VALID_TABLES.has(tableName)) {
       throw new Error(`Invalid or unauthorized table name: ${tableName}`);
     }
 
     const allowedCols = SCHEMA_COLUMNS[tableName] || [];
+
+    // --- TURSO CLIENT ROUTING ---
+    if (turso) {
+      if (operation === "select") {
+        let sql = `SELECT * FROM ${tableName}`;
+        const params: any[] = [];
+        const clauses: string[] = [];
+
+        for (const filter of filters) {
+          const { field, op, val } = filter;
+          if (!isValidWord(field)) throw new Error(`Invalid field name: ${field}`);
+
+          if (field === "id" || field === "uid") {
+            if (allowedCols.includes("uid")) {
+              clauses.push(`(id = ? OR uid = ?)`);
+              params.push(val, val);
+            } else {
+              clauses.push(`id = ?`);
+              params.push(val);
+            }
+          } else if (op === "==" || op === "=") {
+            clauses.push(`${field} = ?`);
+            params.push(val);
+          } else if (op === "!=") {
+            clauses.push(`${field} != ?`);
+            params.push(val);
+          } else if (op === "in") {
+            if (Array.isArray(val) && val.length > 0) {
+              const placeholders = val.map(() => "?").join(",");
+              clauses.push(`${field} IN (${placeholders})`);
+              params.push(...val);
+            } else {
+              clauses.push(`1 = 0`);
+            }
+          } else if (op === "like") {
+            clauses.push(`${field} LIKE ?`);
+            params.push(`%${val.replace(/%/g, "")}%`);
+          } else if (op === "is") {
+            if (val === null) {
+              clauses.push(`${field} IS NULL`);
+            } else {
+              clauses.push(`${field} = ?`);
+              params.push(val);
+            }
+          }
+        }
+
+        if (clauses.length > 0) {
+          sql += ` WHERE ` + clauses.join(" AND ");
+        }
+
+        // Get total count
+        let count = 0;
+        const countRes = await turso.execute({
+          sql: `SELECT COUNT(*) as count FROM (${sql})`,
+          args: params
+        });
+        if (countRes.rows.length > 0) {
+          count = Number((countRes.rows[0] as any).count);
+        }
+
+        if (orderField) {
+          if (!isValidWord(orderField)) throw new Error(`Invalid sorting field: ${orderField}`);
+          sql += ` ORDER BY ${orderField} ${orderAscending ? "ASC" : "DESC"}`;
+        }
+
+        if (limitCount !== null) {
+          sql += ` LIMIT ?`;
+          params.push(limitCount);
+        }
+
+        const res = await turso.execute({ sql, args: params });
+        const parsedRows = res.rows.map(r => parseRow(tableName, r));
+
+        if (isSingle) {
+          if (parsedRows.length === 0) {
+            return { data: null, error: { message: "Document not found", code: "PGRST116" }, count: 0 };
+          }
+          return { data: parsedRows[0], error: null, count: 1 };
+        }
+
+        if (isMaybeSingle) {
+          return { data: parsedRows.length > 0 ? parsedRows[0] : null, error: null, count: parsedRows.length > 0 ? 1 : 0 };
+        }
+
+        return { data: parsedRows, error: null, count };
+      }
+
+      if (operation === "insert") {
+        const rows = Array.isArray(payload) ? payload : [payload];
+        const inserted: any[] = [];
+
+        for (const rawRow of rows) {
+          const item = serializeRow(tableName, rawRow);
+          if (!item.id) {
+            item.id = "id_" + Math.random().toString(36).substring(2, 11);
+          }
+          if (tableName === "profiles" && !item.uid) {
+            item.uid = item.id;
+          }
+
+          const columns: string[] = [];
+          const values: any[] = [];
+          for (const key of Object.keys(item)) {
+            if (allowedCols.includes(key)) {
+              columns.push(key);
+              values.push(item[key]);
+            }
+          }
+
+          if (columns.length === 0) continue;
+
+          const placeholders = columns.map(() => "?").join(",");
+          const sql = `INSERT OR REPLACE INTO ${tableName} (${columns.join(",")}) VALUES (${placeholders})`;
+          await turso.execute({ sql, args: values });
+
+          const cleanItem: any = {};
+          for (const col of allowedCols) {
+            if (col in item) {
+              cleanItem[col] = item[col];
+            } else {
+              cleanItem[col] = null;
+            }
+          }
+          inserted.push(parseRow(tableName, cleanItem));
+        }
+
+        return { data: Array.isArray(payload) ? inserted : inserted[0], error: null };
+      }
+
+      if (operation === "update") {
+        const { data: targets } = await executeQuery(tableName, "select", filters);
+        if (!targets || (Array.isArray(targets) && targets.length === 0)) {
+          return { data: isSingle ? null : [], error: null };
+        }
+
+        const targetList = Array.isArray(targets) ? targets : [targets];
+        const updatedList: any[] = [];
+        const item = serializeRow(tableName, payload);
+
+        const columns: string[] = [];
+        const values: any[] = [];
+        for (const key of Object.keys(item)) {
+          if (key !== "id" && allowedCols.includes(key)) {
+            columns.push(key);
+            values.push(item[key]);
+          }
+        }
+
+        if (columns.length === 0) {
+          return { data: isSingle ? targetList[0] : targetList, error: null };
+        }
+
+        const setClauses = columns.map(col => `${col} = ?`).join(",");
+        const sql = `UPDATE ${tableName} SET ${setClauses} WHERE id = ?`;
+
+        for (const target of targetList) {
+          await turso.execute({ sql, args: [...values, target.id] });
+          const finalRowRes = await turso.execute({
+            sql: `SELECT * FROM ${tableName} WHERE id = ?`,
+            args: [target.id]
+          });
+          if (finalRowRes.rows.length > 0) {
+            updatedList.push(parseRow(tableName, finalRowRes.rows[0]));
+          }
+        }
+
+        return { data: isSingle ? updatedList[0] : updatedList, error: null };
+      }
+
+      if (operation === "delete") {
+        const { data: targets } = await executeQuery(tableName, "select", filters);
+        if (!targets || (Array.isArray(targets) && targets.length === 0)) {
+          return { data: isSingle ? null : [], error: null };
+        }
+
+        const targetList = Array.isArray(targets) ? targets : [targets];
+        for (const target of targetList) {
+          await turso.execute({
+            sql: `DELETE FROM ${tableName} WHERE id = ?`,
+            args: [target.id]
+          });
+        }
+
+        return { data: targets, error: null };
+      }
+
+      throw new Error(`Unsupported database operation: ${operation}`);
+    }
+
+    // --- LOCAL SQLite BACKEND ROUTING ---
+    const db = getDb();
 
     if (operation === "select") {
       let sql = `SELECT * FROM ${tableName}`;
@@ -718,7 +1325,7 @@ export async function executeQuery(
 
     throw new Error(`Unsupported database operation: ${operation}`);
   } catch (err: any) {
-    console.error(`[SQLite Error] table "${tableName}" operation "${operation}":`, err);
+    console.error(`[Database Error] table "${tableName}" operation "${operation}":`, err);
     return { data: null, error: { message: err.message || String(err) } };
   }
 }

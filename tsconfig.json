@@ -23,5 +23,13 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "*.db",
+    "*.db-shm",
+    "*.db-wal",
+    "manga_reader.db"
+  ]
 }
