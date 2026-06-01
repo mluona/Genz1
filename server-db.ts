@@ -1,4 +1,3 @@
-import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { createClient } from "@libsql/client";
@@ -9,7 +8,7 @@ const DB_PATH = process.env.VERCEL
   : path.join(process.cwd(), "manga_reader.db");
 
 // Initialize Database
-let dbInstance: Database.Database | null = null;
+let dbInstance: any = null;
 let tursoClientInstance: ReturnType<typeof createClient> | null = null;
 let isTursoActive = true;
 
@@ -39,9 +38,21 @@ export function getTursoClient() {
   return tursoClientInstance;
 }
 
-export function getDb(): Database.Database {
+export async function getDbAsync(): Promise<any> {
   if (!dbInstance) {
-    dbInstance = new Database(DB_PATH);
+    try {
+      const DatabaseConstructor = (await import("better-sqlite3")).default;
+      dbInstance = new DatabaseConstructor(DB_PATH);
+    } catch (err: any) {
+      console.error("[better-sqlite3 Loading Error]:", err);
+      if (process.env.VERCEL) {
+        throw new Error(
+          "Local SQLite (better-sqlite3) cannot be loaded on Vercel because it requires native binary builders. Please configure your Turso Database environment variables (TURSO_DATABASE_URL and TURSO_AUTH_TOKEN) in your Vercel Dashboard to connect your app to a persistent database."
+        );
+      } else {
+        throw err;
+      }
+    }
     // Enable performance optimizations with self-contained single-file storage
     dbInstance.pragma("journal_mode = DELETE");
     dbInstance.pragma("synchronous = NORMAL");
@@ -430,7 +441,7 @@ export async function initDb() {
     }
   }
 
-  const db = getDb();
+  const db = await getDbAsync();
   console.log(`[SQLite Init] Checking database tables at: ${DB_PATH}`);
 
   // Create tables using clean transactional blocks
@@ -1135,7 +1146,7 @@ export async function executeQuery(
     }
 
     // --- LOCAL SQLite BACKEND ROUTING ---
-    const db = getDb();
+    const db = await getDbAsync();
 
     if (operation === "select") {
       let sql = `SELECT * FROM ${tableName}`;
