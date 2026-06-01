@@ -313,7 +313,7 @@ export const supabase = {
     async signInWithOAuth({ provider }: any) {
       try {
         // Construct the popup redirect uri matching our callback endpoint
-        const redirectUri = window.location.origin + `/auth/callback/${provider}`;
+        const redirectUri = window.location.origin + `/api/auth/callback/${provider}`;
         
         // Fetch the provider OAuth URL from our server
         const response = await fetch(`/api/auth/url?provider=${provider}&redirect_uri=${encodeURIComponent(redirectUri)}`);

@@ -193,7 +193,7 @@ async function startServer() {
   });
 
   // 4. Google OAuth Redirect Callback Endpoint
-  app.get(["/auth/callback/google", "/auth/callback/google/"], async (req, res) => {
+  app.get(["/api/auth/callback/google", "/api/auth/callback/google/"], async (req, res) => {
     const { code } = req.query;
     if (!code || typeof code !== "string") {
       return res.send(`
@@ -218,7 +218,7 @@ async function startServer() {
       // Reconstruct the exact redirect URI used by client
       const host = req.headers.host || "localhost:3000";
       const protocol = req.headers["x-forwarded-proto"] || "http";
-      const redirectUri = `${protocol}://${host}/auth/callback/google`;
+      const redirectUri = `${protocol}://${host}/api/auth/callback/google`;
 
       // Token exchange
       const tokenRes = await axios.post("https://oauth2.googleapis.com/token", new URLSearchParams({
@@ -323,7 +323,7 @@ async function startServer() {
   });
 
   // 5. Discord OAuth Redirect Callback Endpoint
-  app.get(["/auth/callback/discord", "/auth/callback/discord/"], async (req, res) => {
+  app.get(["/api/auth/callback/discord", "/api/auth/callback/discord/"], async (req, res) => {
     const { code } = req.query;
     if (!code || typeof code !== "string") {
       return res.send(`
@@ -348,7 +348,7 @@ async function startServer() {
       // Reconstruct the exact redirect URI used by client
       const host = req.headers.host || "localhost:3000";
       const protocol = req.headers["x-forwarded-proto"] || "http";
-      const redirectUri = `${protocol}://${host}/auth/callback/discord`;
+      const redirectUri = `${protocol}://${host}/api/auth/callback/discord`;
 
       // Token exchange
       const tokenRes = await axios.post("https://discord.com/api/oauth2/token", new URLSearchParams({
