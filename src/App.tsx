@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -23,6 +23,36 @@ import { PageManagement } from './pages/admin/PageManagement';
 import { CoinPackagesManagement } from './pages/admin/CoinPackagesManagement';
 import { Splash } from './components/Splash';
 import { AnimatePresence } from 'motion/react';
+
+function MainSiteContainer() {
+  const location = useLocation();
+  // Check if it's the reader page /series/:slug/:chapterNum (has 3 segments after splitting)
+  const isReaderPage = location.pathname.includes('/series/') && location.pathname.split('/').filter(Boolean).length === 3;
+
+  return (
+    <div className="relative main-app">
+      <div className="atmosphere" />
+      <Navbar />
+      <main className="relative z-10">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/series/:slug" element={<SeriesDetail />} />
+          <Route path="/series/:slug/:chapterNum" element={<Reader />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/library" element={<Library />} />
+          <Route path="/novels" element={<Novels />} />
+          <Route path="/manga" element={<Library />} />
+          <Route path="/manhwa" element={<Library />} />
+          <Route path="/search" element={<Library />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+      {!isReaderPage && <Footer />}
+      <BottomNav />
+      <BackToTop />
+    </div>
+  );
+}
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -57,32 +87,7 @@ export default function App() {
               </Route>
 
               {/* Main Site Routes */}
-              <Route
-                path="*"
-                element={
-                  <div className="relative main-app">
-                    <div className="atmosphere" />
-                    <Navbar />
-                    <main className="relative z-10">
-                      <Routes>
-                        <Route path="/" element={<Home />} />
-                        <Route path="/series/:slug" element={<SeriesDetail />} />
-                        <Route path="/series/:slug/:chapterNum" element={<Reader />} />
-                        <Route path="/profile" element={<Profile />} />
-                        <Route path="/library" element={<Library />} />
-                        <Route path="/novels" element={<Novels />} />
-                        <Route path="/manga" element={<Library />} />
-                        <Route path="/manhwa" element={<Library />} />
-                        <Route path="/search" element={<Library />} />
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                      </Routes>
-                    </main>
-                    <Footer />
-                    <BottomNav />
-                    <BackToTop />
-                  </div>
-                }
-              />
+              <Route path="*" element={<MainSiteContainer />} />
             </Routes>
           </div>
         </Router>

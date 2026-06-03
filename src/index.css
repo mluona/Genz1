@@ -86,11 +86,11 @@
 
 @layer components {
   .glass-panel {
-    @apply bg-zinc-900/40 border border-white/5 backdrop-blur-xl;
+    @apply bg-zinc-900/85 border border-white/5 backdrop-blur-xl;
   }
 
   .m3-card {
-    @apply bg-zinc-900/40 border border-white/5 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-2xl;
+    @apply bg-zinc-900/85 border border-white/5 backdrop-blur-xl rounded-[2.5rem] p-8 shadow-2xl;
   }
 
   .m3-button-primary {

@@ -47,7 +47,7 @@ export const BottomNav: React.FC = () => {
         scale: isVisible ? 1 : 0.98
       }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="sm:hidden fixed bottom-0 left-0 right-0 w-full bg-zinc-950/95 backdrop-blur-xl border-t border-white/5 z-50 px-6 py-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.95)]"
+      className="sm:hidden fixed bottom-0 left-0 right-0 w-full bg-zinc-950/80 backdrop-blur-lg border-t border-white/10 z-50 px-6 py-2 shadow-sm"
     >
       <div className="flex items-center justify-between max-w-md mx-auto">
         {navItems.map((item) => {

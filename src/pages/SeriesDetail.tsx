@@ -227,22 +227,20 @@ export const SeriesDetail: React.FC = () => {
       
       {/* Custom premium background & gradient atmosphere orbs */}
       <div className="atmosphere" />
-      <div className="absolute inset-x-0 top-0 h-[1000px] bg-gradient-to-b from-emerald-500/10 via-blue-500/5 to-transparent blur-[120px] pointer-events-none z-0" />
-      <div className="absolute top-[25%] right-[-10%] w-[400px] h-[400px] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none z-0 animate-pulse duration-5000" />
-      <div className="absolute top-[45%] left-[-10%] w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none z-0" />
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.01)_1px,transparent_1px)] bg-[size:48px_48px] pointer-events-none z-0 [mask-image:radial-gradient(ellipse_at_top,white,transparent_80%)]" />
+      <div className="absolute inset-x-0 top-0 h-[1000px] bg-gradient-to-b from-emerald-500/3 to-transparent blur-[150px] pointer-events-none z-0" />
+      <div className="absolute top-[25%] right-[-10%] w-[400px] h-[400px] bg-emerald-500/3 rounded-full blur-[120px] pointer-events-none z-0" />
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.005)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.005)_1px,transparent_1px)] bg-[size:48px_48px] pointer-events-none z-0 [mask-image:radial-gradient(ellipse_at_top,white,transparent_80%)]" />
       
       {/* Immersive Header */}
-      <div className="relative min-h-[60vh] lg:min-h-[70vh] flex flex-col justify-end overflow-hidden">
+      <div className="relative min-h-[60vh] lg:min-h-[70vh] flex flex-col justify-end overflow-hidden bg-zinc-950">
         {/* Background Cover */}
         <div className="absolute inset-0 z-0">
           <div 
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40 blur-3xl scale-125 transition-transform duration-1000"
-            style={{ backgroundImage: `url(${series.backgroundImage || series.coverImage})` }}
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-45 scale-100 transition-all duration-1000"
+            style={{ backgroundImage: `url(${getProxiedImageUrl(series.backgroundImage || series.coverImage)})` }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/85 to-zinc-950/30" />
-          <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-transparent to-transparent opacity-90" />
-          <div className="absolute bottom-0 inset-x-0 h-40 bg-gradient-to-t from-zinc-950 to-transparent pointer-events-none" />
+          {/* Gentle elegant bottom gradient overlay to blend into the main content area */}
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent pointer-events-none" />
         </div>
 
         <div className="relative z-10 pt-32 pb-12 sm:pb-20">
@@ -289,16 +287,16 @@ export const SeriesDetail: React.FC = () => {
                 </h1>
 
                 <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 sm:gap-4 text-zinc-300 text-sm font-medium">
-                  <div className="flex items-center gap-2 bg-zinc-900/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
+                  <div className="flex items-center gap-2 bg-zinc-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
                     <User className="w-4 h-4 text-emerald-500" />
                     <span>{series.author}</span>
                   </div>
-                  <div className="flex items-center gap-2 bg-zinc-900/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
+                  <div className="flex items-center gap-2 bg-zinc-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
                     <Star className="w-4 h-4 text-emerald-500 fill-current" />
                     <span className="text-white font-bold">{series.rating.toFixed(1)}</span>
                     <span className="text-xs opacity-50">({series.ratingCount})</span>
                   </div>
-                  <div className="flex items-center gap-2 bg-zinc-900/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
+                  <div className="flex items-center gap-2 bg-zinc-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
                     <Calendar className="w-4 h-4 text-emerald-500" />
                     <span>{series.releaseYear}</span>
                   </div>
@@ -306,7 +304,7 @@ export const SeriesDetail: React.FC = () => {
 
                 <div className="flex flex-wrap justify-center md:justify-start gap-2 pt-4">
                   {series.genres.map(genre => (
-                    <Link key={genre} to={`/search?genre=${genre}`} className="px-4 py-1.5 bg-zinc-800/80 backdrop-blur-md border border-white/10 rounded-full text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all cursor-pointer shadow-sm">
+                    <Link key={genre} to={`/search?genre=${genre}`} className="px-4 py-1.5 bg-zinc-800/85 backdrop-blur-md border border-white/10 rounded-full text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all cursor-pointer shadow-sm">
                       {genre}
                     </Link>
                   ))}
