@@ -15,7 +15,7 @@ import { Sparkles } from 'lucide-react';
 export const SeriesDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const [series, setSeries] = useState<Series | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [commentsCount, setCommentsCount] = useState(0);
@@ -43,8 +43,12 @@ export const SeriesDetail: React.FC = () => {
       return;
     }
     
+    // Optimistic Update
+    const wasFavorite = isFavorite;
+    setIsFavorite(!wasFavorite);
+    
     let newFavorites = [...(profile.favorites || [])];
-    if (isFavorite) {
+    if (wasFavorite) {
       newFavorites = newFavorites.filter(id => id !== series.id);
     } else {
       newFavorites.push(series.id);
@@ -54,30 +58,62 @@ export const SeriesDetail: React.FC = () => {
       const { error } = await supabase
         .from('profiles')
         .update({ favorites: newFavorites })
-        .eq('uid', user.id);
+        .eq('id', user.id); // Changed from .eq('uid', user.id) to .eq('id', user.id) based on Profile.tsx usage
       
       if (error) throw error;
-      setIsFavorite(!isFavorite);
+      showToast(wasFavorite ? "تمت الإزالة من المكتبة" : "تمت الإضافة للمكتبة");
+      await refreshProfile(user.id); // Update auth context profile data
     } catch (error: any) {
       console.error('Error updating favorites:', error);
+      setIsFavorite(wasFavorite); // Revert
       showToast("فشلت الإضافة إلى المكتبة");
     }
   };
 
   const handleShare = async () => {
+    const shareText = "شاهد افضل مانجا و الروايات على";
+    const shareUrl = "https://genzmanhw.vercel.app/";
     if (navigator.share) {
       try {
         await navigator.share({
-          title: series?.title,
-          text: `Check out ${series?.title} on GENZ!`,
-          url: window.location.href,
+          title: 'GENZ',
+          text: shareText,
+          url: shareUrl,
         });
       } catch (err) {
         console.error('Error sharing:', err);
+        // Fallback to copy
+        copyToClipboard();
       }
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      showToast('تم نسخ الرابط!');
+      copyToClipboard();
+    }
+  };
+
+  const copyToClipboard = async () => {
+    const text = "شاهد افضل مانجا و الروايات على https://genzmanhw.vercel.app/";
+    try {
+      if (document.hasFocus()) {
+        await navigator.clipboard.writeText(text);
+        showToast('تم نسخ الرابط!');
+      } else {
+        throw new Error("Document not focused");
+      }
+    } catch (err) {
+      console.warn('Navigator clipboard failed, trying fallback', err);
+      // Fallback
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        showToast('تم نسخ الرابط!');
+      } catch (fallbackErr) {
+        console.error('Fallback clipboard failed', fallbackErr);
+      }
+      document.body.removeChild(textArea);
     }
   };
 

@@ -185,6 +185,8 @@ export async function initDb() {
       try { await turso.execute(`ALTER TABLE profiles ADD COLUMN password_hash TEXT`); } catch (_) {}
       try { await turso.execute(`ALTER TABLE profiles ADD COLUMN google_id TEXT`); } catch (_) {}
       try { await turso.execute(`ALTER TABLE profiles ADD COLUMN discord_id TEXT`); } catch (_) {}
+      try { await turso.execute(`ALTER TABLE profiles ADD COLUMN createdAt TEXT`); } catch (_) {}
+      try { await turso.execute(`ALTER TABLE profiles ADD COLUMN unlockedChapters TEXT`); } catch (_) {}
 
       // Check if seeding is needed
       const countRowRes = await turso.execute("SELECT COUNT(*) as count FROM series");
@@ -595,6 +597,8 @@ export async function initDb() {
   try { db.prepare(`ALTER TABLE profiles ADD COLUMN password_hash TEXT`).run(); } catch (_) {}
   try { db.prepare(`ALTER TABLE profiles ADD COLUMN google_id TEXT`).run(); } catch (_) {}
   try { db.prepare(`ALTER TABLE profiles ADD COLUMN discord_id TEXT`).run(); } catch (_) {}
+  try { db.prepare(`ALTER TABLE profiles ADD COLUMN createdAt TEXT`).run(); } catch (_) {}
+  try { db.prepare(`ALTER TABLE profiles ADD COLUMN unlockedChapters TEXT`).run(); } catch (_) {}
 
   // Seed default data if series is empty
   const countRow = db.prepare("SELECT COUNT(*) as count FROM series").get() as { count: number };

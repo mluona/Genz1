@@ -241,19 +241,48 @@ export const Reader: React.FC = () => {
   }, [series, chapter]);
 
   const handleShare = async () => {
+    const shareText = "شاهد افضل مانجا و الروايات على";
+    const shareUrl = "https://genzmanhw.vercel.app/";
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `${series?.title} - الفصل ${chapter?.chapterNumber}`,
-          text: `اقرأ الفصل ${chapter?.chapterNumber} من ${series?.title}!`,
-          url: window.location.href,
+          title: 'GENZ',
+          text: shareText,
+          url: shareUrl,
         });
       } catch (err) {
         console.error('Error sharing:', err);
+        copyToClipboard();
       }
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      showToast('تم نسخ الرابط!');
+      copyToClipboard();
+    }
+  };
+
+  const copyToClipboard = async () => {
+    const text = "شاهد افضل مانجا و الروايات على https://genzmanhw.vercel.app/";
+    try {
+      if (document.hasFocus()) {
+        await navigator.clipboard.writeText(text);
+        showToast('تم نسخ الرابط!');
+      } else {
+        throw new Error("Document not focused");
+      }
+    } catch (err) {
+      console.warn('Navigator clipboard failed, trying fallback', err);
+      // Fallback
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        showToast('تم نسخ الرابط!');
+      } catch (fallbackErr) {
+        console.error('Fallback clipboard failed', fallbackErr);
+      }
+      document.body.removeChild(textArea);
     }
   };
 

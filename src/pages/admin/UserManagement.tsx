@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../supabase';
-import { UserProfile, UserRole } from '../../types';
+import { UserProfile, UserRole, Transaction } from '../../types';
 import { Shield, Ban, Trash2, Search, MoreVertical, Filter, Calendar, Mail, User as UserIcon, CheckCircle, XCircle, Coins } from 'lucide-react';
 
 export const UserManagement: React.FC = () => {
@@ -8,13 +8,59 @@ export const UserManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [userTransactions, setUserTransactions] = useState<Transaction[]>([]);
   const [coinsToAdd, setCoinsToAdd] = useState<number>(0);
+  const [exactCoins, setExactCoins] = useState<number | ''>('');
+
+  useEffect(() => {
+    if (selectedUser) {
+      fetchUserTransactions(selectedUser.id);
+      setExactCoins(selectedUser.coins || 0);
+    }
+  }, [selectedUser]);
+
+  const fetchUserTransactions = async (uid: string) => {
+    const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('userId', uid)
+        .order('createdAt', { ascending: false });
+    
+    if (error) {
+      console.error("Error fetching user transactions:", error);
+      return;
+    }
+    setUserTransactions((data as Transaction[]) || []);
+  };
+
+  const handleDeleteTransaction = async (txId: string, amount: number) => {
+      try {
+        const { error: txError } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', txId);
+        if (txError) throw txError;
+
+        if (selectedUser) {
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .update({ coins: (selectedUser.coins || 0) - amount })
+                .eq('id', selectedUser.id);
+            if (profileError) throw profileError;
+            
+            setSelectedUser(prev => prev ? { ...prev, coins: (prev.coins || 0) - amount } : null);
+            fetchUserTransactions(selectedUser.id);
+            setExactCoins(selectedUser.coins ? selectedUser.coins - amount : 0);
+        }
+      } catch (error) {
+        console.error("Error deleting transaction:", error);
+      }
+  };
 
   const fetchUsers = async () => {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
-      .order('createdAt', { ascending: false });
+      .select('*');
     
     if (error) {
       console.error("Error fetching users:", error);
@@ -43,8 +89,9 @@ export const UserManagement: React.FC = () => {
       const { error } = await supabase
         .from('profiles')
         .update({ role: newRole })
-        .eq('uid', uid);
+        .eq('id', uid);
       if (error) throw error;
+      fetchUsers();
     } catch (error) {
       console.error("Error updating role:", error);
     }
@@ -55,8 +102,12 @@ export const UserManagement: React.FC = () => {
       const { error } = await supabase
         .from('profiles')
         .update({ banned: isBanned })
-        .eq('uid', uid);
+        .eq('id', uid);
       if (error) throw error;
+      fetchUsers();
+      if (selectedUser && selectedUser.id === uid) {
+        setSelectedUser(prev => prev ? { ...prev, banned: isBanned } : null);
+      }
     } catch (error) {
       console.error("Error banning user:", error);
     }
@@ -65,16 +116,90 @@ export const UserManagement: React.FC = () => {
   const handleUpdateCoins = async (uid: string, currentCoins: number = 0) => {
     if (coinsToAdd === 0) return;
     try {
+      const newCoins = currentCoins + coinsToAdd;
       const { error } = await supabase
         .from('profiles')
-        .update({ coins: currentCoins + coinsToAdd })
-        .eq('uid', uid);
+        .update({ coins: newCoins })
+        .eq('id', uid);
       if (error) throw error;
+
+      await supabase
+        .from('transactions')
+        .insert([{
+          userId: uid,
+          amount: coinsToAdd,
+          type: 'admin_adjustment',
+          description: `تعديل رصيد بواسطة الإدارة: ${coinsToAdd > 0 ? '+' : ''}${coinsToAdd}`,
+          timestamp: new Date().toISOString()
+        }]);
+
       setCoinsToAdd(0);
-      // Update local selected user state to reflect changes immediately
-      setSelectedUser(prev => prev ? { ...prev, coins: (prev.coins || 0) + coinsToAdd } : null);
+      setSelectedUser(prev => prev ? { ...prev, coins: newCoins } : null);
+      setExactCoins(newCoins);
+      fetchUsers();
+      fetchUserTransactions(uid);
     } catch (error) {
       console.error("Error updating coins:", error);
+    }
+  };
+
+  const handleSetAbsoluteCoins = async (uid: string, targetCoins: number) => {
+    if (targetCoins < 0) return;
+    try {
+      const difference = targetCoins - (selectedUser?.coins || 0);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ coins: targetCoins })
+        .eq('id', uid);
+      if (error) throw error;
+
+      await supabase
+        .from('transactions')
+        .insert([{
+          userId: uid,
+          amount: difference,
+          type: 'admin_adjustment',
+          description: `تعديل رصيد مخصص من الإدارة إلى: ${targetCoins}`,
+          timestamp: new Date().toISOString()
+        }]);
+
+      setSelectedUser(prev => prev ? { ...prev, coins: targetCoins } : null);
+      setExactCoins(targetCoins);
+      fetchUsers();
+      fetchUserTransactions(uid);
+      alert("تم تخصيص رصيد المستخدم بنجاح!");
+    } catch (error) {
+      console.error("Error setting absolute coins:", error);
+    }
+  };
+
+  const handleDeleteAllCoins = async (uid: string) => {
+    if (!window.confirm("هل أنت متأكد من رغبتك في حذف أو تصفير جميع عملات هذا المستخدم؟")) return;
+    try {
+      const difference = -(selectedUser?.coins || 0);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ coins: 0 })
+        .eq('id', uid);
+      if (error) throw error;
+
+      await supabase
+        .from('transactions')
+        .insert([{
+          userId: uid,
+          amount: difference,
+          type: 'admin_clearance',
+          description: "تصفير الرصيد بالكامل بواسطة الإدارة",
+          timestamp: new Date().toISOString()
+        }]);
+
+      setSelectedUser(prev => prev ? { ...prev, coins: 0 } : null);
+      setExactCoins(0);
+      fetchUsers();
+      fetchUserTransactions(uid);
+      alert("تم حذف وتصفير عملات المستخدم بالكامل!");
+    } catch (error) {
+      console.error("Error clearing user coins:", error);
     }
   };
 
@@ -242,30 +367,92 @@ export const UserManagement: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-4 bg-zinc-50 rounded-2xl space-y-4">
+            <div className="p-4 bg-zinc-50 rounded-2xl space-y-4 text-right animate-in fade-in duration-200" dir="rtl">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2">
-                  <Coins className="w-3 h-3" /> Balance
+                  <Coins className="w-3 h-3 text-amber-500" /> رصيد المستخدم الحالي
                 </p>
-                <p className="text-sm font-bold text-amber-500">{selectedUser.coins || 0} Coins</p>
+                <p className="text-sm font-bold text-amber-500 font-mono">{selectedUser.coins || 0} عملة</p>
               </div>
-              <div className="flex gap-2">
-                <input 
-                  type="number" 
-                  value={coinsToAdd}
-                  onChange={(e) => setCoinsToAdd(Number(e.target.value))}
-                  placeholder="Amount to add/remove"
-                  className="flex-1 bg-white border border-zinc-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
+
+              {/* Delta Coin Edit: Add or Remove coins */}
+              <div className="space-y-1.5 pt-2 border-t border-zinc-200">
+                <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-400">إضافة أو خصم رصيد (قيمة نسبية)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="number" 
+                    value={coinsToAdd === 0 ? '' : coinsToAdd}
+                    onChange={(e) => setCoinsToAdd(Number(e.target.value))}
+                    placeholder="مثال: 100 أو -50"
+                    className="flex-1 bg-white border border-zinc-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 text-left"
+                    dir="ltr"
+                  />
+                  <button 
+                    onClick={() => handleUpdateCoins(selectedUser.id, selectedUser.coins)}
+                    disabled={coinsToAdd === 0}
+                    className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-[10px] whitespace-nowrap"
+                  >
+                    تعديل الرصيد
+                  </button>
+                </div>
+              </div>
+
+              {/* Absolute Coin Edit: Set exact quantity of coins */}
+              <div className="space-y-1.5 pt-2 border-t border-zinc-200">
+                <label className="block text-[9px] font-black uppercase tracking-widest text-zinc-400">تخصيص رصيد محدد (قيمة مطلقة)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="number" 
+                    value={exactCoins}
+                    onChange={(e) => setExactCoins(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="أدخل عدد العملات الكلي بالضبط..."
+                    className="flex-1 bg-white border border-zinc-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 text-left"
+                    dir="ltr"
+                  />
+                  <button 
+                    onClick={() => handleSetAbsoluteCoins(selectedUser.id, Number(exactCoins || 0))}
+                    disabled={exactCoins === '' || exactCoins < 0 || exactCoins === selectedUser.coins}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-[10px] whitespace-nowrap"
+                  >
+                    تعيين الرصيد
+                  </button>
+                </div>
+              </div>
+
+              {/* Danger section: Reset and delete all coins */}
+              <div className="pt-2 border-t border-zinc-200">
                 <button 
-                  onClick={() => handleUpdateCoins(selectedUser.id, selectedUser.coins)}
-                  disabled={coinsToAdd === 0}
-                  className="px-4 py-2 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  onClick={() => handleDeleteAllCoins(selectedUser.id)}
+                  disabled={(selectedUser.coins || 0) === 0}
+                  className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 hover:border-red-300 font-extrabold rounded-xl transition-all text-[11px] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Update
+                  <Trash2 className="w-3.5 h-3.5" />
+                  حذف وتصفير جميع عملات المستخدم كلياً
                 </button>
               </div>
-              <p className="text-[10px] text-zinc-400 text-center">Use negative numbers to remove coins.</p>
+              
+              <div className="pt-4 border-t border-zinc-200 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">سجل المعاملات والأرصدة الأخير</p>
+                {userTransactions.length === 0 ? (
+                  <p className="text-[10px] text-zinc-400 italic">لا توجد معاملات مسجلة</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto pl-1">
+                    {userTransactions.map(tx => (
+                        <div key={tx.id} className="flex items-center justify-between p-2 bg-white rounded-lg text-xs border border-zinc-100">
+                            <span className="truncate max-w-[160px] text-zinc-600 text-right">{tx.description || `تعديل (${tx.amount})`}</span>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className={`font-mono font-bold text-xs ${tx.amount > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                    {tx.amount > 0 ? '+' : ''}{tx.amount}
+                                </span>
+                                <button onClick={() => handleDeleteTransaction(tx.id, tx.amount)} className="text-zinc-300 hover:text-red-500 transition-colors">
+                                     <Trash2 className="w-3 h-3" />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex gap-4">

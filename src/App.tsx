@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
 import { BackToTop } from './components/BackToTop';
+import { Footer } from './components/Footer';
 import { Home } from './pages/Home';
 import { SeriesDetail } from './pages/SeriesDetail';
 import { Reader } from './pages/Reader';
@@ -35,7 +36,7 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <Router>
-            <div dir="rtl" className="min-h-screen overflow-x-hidden bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white font-sans selection:bg-emerald-500/30 selection:text-emerald-200 transition-colors duration-300">
+            <div dir="rtl" className="min-h-screen overflow-x-hidden bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 selection:text-emerald-200 transition-colors duration-300">
               <AnimatePresence mode="wait">
                 {showSplash && (
                   <Splash key="splash" onComplete={handleSplashComplete} />
@@ -76,6 +77,7 @@ export default function App() {
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </Routes>
                     </main>
+                    <Footer />
                     <BottomNav />
                     <BackToTop />
                   </div>

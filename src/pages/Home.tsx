@@ -34,12 +34,14 @@ export const Home: React.FC = () => {
   const [showShareToast, setShowShareToast] = useState(false);
 
   const handleShare = async () => {
+    const shareText = "شاهد افضل مانجا و الروايات على";
+    const shareUrl = "https://genzmanhw.vercel.app/";
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Azora Manga',
-          text: 'شاهد أفضل المانجا والروايات المترجمة على Azora Manga!',
-          url: window.location.origin
+          title: 'GENZ',
+          text: shareText,
+          url: shareUrl
         });
       } catch (err) {
         console.log("Navigator share failed, copying link instead", err);
@@ -50,10 +52,33 @@ export const Home: React.FC = () => {
     }
   };
 
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(window.location.origin);
-    setShowShareToast(true);
-    setTimeout(() => setShowShareToast(false), 2500);
+  const copyToClipboard = async () => {
+    const text = "شاهد افضل مانجا و الروايات على https://genzmanhw.vercel.app/";
+    try {
+      if (document.hasFocus()) {
+        await navigator.clipboard.writeText(text);
+        setShowShareToast(true);
+        setTimeout(() => setShowShareToast(false), 2500);
+      } else {
+        throw new Error("Document not focused");
+      }
+    } catch (err) {
+      console.warn("Navigator clipboard failed, trying fallback", err);
+      // Fallback
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setShowShareToast(true);
+        setTimeout(() => setShowShareToast(false), 2500);
+      } catch (fallbackErr) {
+        console.error("Fallback clipboard failed", fallbackErr);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleSubmitReport = (e: React.FormEvent) => {
@@ -168,7 +193,7 @@ export const Home: React.FC = () => {
             <div className="flex items-center gap-3.5">
               <div className="w-[3px] h-11 bg-blue-500 rounded-full" />
               <div className="text-right">
-                <h3 className="text-[15px] font-black text-white">شارك Azora Manga</h3>
+                <h3 className="text-[15px] font-black text-white">شارك Genz</h3>
                 <p className="text-zinc-400 text-[10px] font-bold mt-1">مع أصدقائك</p>
               </div>
             </div>

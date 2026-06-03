@@ -37,7 +37,7 @@
   --black: #000000;
 }
 
-.light .main-app {
+.light {
   --zinc-950: #fafafa;
   --zinc-900: #ffffff;
   --zinc-800: #f4f4f5;
