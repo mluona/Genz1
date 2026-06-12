@@ -163,7 +163,7 @@ export const SeriesDetail: React.FC = () => {
       try {
         const { data: chaptersData } = await supabase
           .from('chapters')
-          .select('*')
+          .select('id, seriesId, chapterNumber, title, publishDate, isPremium, coinPrice, views')
           .eq('seriesId', series.id)
           .order('chapterNumber', { ascending: false });
         
@@ -183,18 +183,56 @@ export const SeriesDetail: React.FC = () => {
 
     const fetchSimilarWorks = async () => {
       try {
-        const { data } = await supabase.from('series').select('*');
+        // Fetch only required lightweight fields to drastically improve performance
+        const { data } = await supabase
+          .from('series')
+          .select('id, title, coverImage, type, author, genres, rating, ratingCount, slug, status, description')
+          .neq('id', series.id)
+          .limit(100);
+          
         if (data) {
           const filtered = (data as Series[])
             .filter(item => item.id !== series.id)
             .map(item => {
-              const overlap = item.genres.filter(g => series.genres.includes(g)).length;
-              return { item, overlap };
+              let score = 0;
+              
+              // 1. Genre overlap (High Weight)
+              const genreOverlap = item.genres.filter(g => series.genres.includes(g)).length;
+              score += genreOverlap * 5;
+              
+              // 2. Author match (Very High Weight)
+              if (item.author && series.author && item.author === series.author) {
+                score += 10;
+              }
+              
+              // 3. Title overlap (Medium Weight)
+              if (item.title && series.title) {
+                const titleWords = series.title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                const itemTitleLower = item.title.toLowerCase();
+                const titleMatch = titleWords.filter(w => itemTitleLower.includes(w)).length;
+                score += titleMatch * 3;
+              }
+              
+              // 4. Description overlap (Low Weight)
+              if (item.description && series.description) {
+                const descWords = series.description.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+                const itemDescLower = item.description.toLowerCase();
+                const descMatch = descWords.filter(w => itemDescLower.includes(w)).length;
+                score += descMatch * 1;
+              }
+              
+              // Optional: Just random score if no match to make sure something shows up!
+              if (score === 0) {
+                 score = Math.random() * 0.1; // fallback random score
+              }
+
+              return { item, score };
             })
-            .filter(x => x.overlap > 0)
-            .sort((a, b) => b.overlap - a.overlap)
+            // Sort by score
+            .sort((a, b) => b.score - a.score)
             .map(x => x.item)
-            .slice(0, 4);
+            .slice(0, 10); // Show up to 10 similar ones, we can use a carousel or scroll
+            
           setSimilarWorks(filtered);
         }
       } catch (error) {
@@ -269,7 +307,7 @@ export const SeriesDetail: React.FC = () => {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
-                className="flex-1 space-y-4 md:space-y-6"
+                className="flex-1 space-y-4 md:space-y-6 flex flex-col items-center md:items-start text-center md:text-right w-full mt-4 md:mt-0"
               >
                 <div className="flex flex-wrap justify-center md:justify-start gap-2">
                   <span className="px-3 py-1 bg-emerald-500 text-black text-[10px] font-black rounded-full uppercase tracking-widest">
@@ -282,29 +320,29 @@ export const SeriesDetail: React.FC = () => {
                   </span>
                 </div>
 
-                <h1 className="text-3xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-tight md:leading-none text-gradient" dir="auto">
+                <h1 className="text-3xl sm:text-5xl lg:text-7xl font-black tracking-tighter leading-tight text-white drop-shadow-xl" dir="auto">
                   {series.title}
                 </h1>
 
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 sm:gap-4 text-zinc-300 text-sm font-medium">
-                  <div className="flex items-center gap-2 bg-zinc-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
-                    <User className="w-4 h-4 text-emerald-500" />
-                    <span>{series.author}</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-zinc-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
-                    <Star className="w-4 h-4 text-emerald-500 fill-current" />
-                    <span className="text-white font-bold">{series.rating.toFixed(1)}</span>
-                    <span className="text-xs opacity-50">({series.ratingCount})</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-zinc-900/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/5 shadow-sm">
-                    <Calendar className="w-4 h-4 text-emerald-500" />
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 sm:gap-3 text-zinc-300 text-xs sm:text-sm font-medium w-full max-w-full">
+                  <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10 shadow-lg shrink-0">
+                    <Calendar className="w-4 h-4 text-emerald-400" />
                     <span>{series.releaseYear}</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10 shadow-lg shrink-0">
+                    <Star className="w-4 h-4 text-emerald-400 fill-emerald-400" />
+                    <span className="text-white font-bold">{series.rating.toFixed(1)}</span>
+                    <span className="opacity-50">({series.ratingCount})</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10 shadow-lg shrink-0">
+                    <User className="w-4 h-4 text-emerald-400" />
+                    <span className="truncate max-w-[100px] sm:max-w-xs">{series.author}</span>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap justify-center md:justify-start gap-2 pt-4">
+                <div className="flex flex-wrap justify-center md:justify-start gap-2 pt-2">
                   {series.genres.map(genre => (
-                    <Link key={genre} to={`/search?genre=${genre}`} className="px-4 py-1.5 bg-zinc-800/85 backdrop-blur-md border border-white/10 rounded-full text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all cursor-pointer shadow-sm">
+                    <Link key={genre} to={`/search?genre=${genre}`} className="px-4 py-1.5 bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-xs font-bold text-white hover:bg-emerald-500 hover:border-emerald-500 hover:text-black transition-all cursor-pointer shadow-lg shrink-0">
                       {genre}
                     </Link>
                   ))}
@@ -471,14 +509,14 @@ export const SeriesDetail: React.FC = () => {
                 </span>
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">أعمال مشابهة قد تعجبك</h2>
-                  <p className="text-xs text-zinc-500 mt-1">مقترحات بنفس التصنيف والأسلوب القصصي للعمل الحالي</p>
+                  <p className="text-xs text-zinc-500 mt-1">مقترحات بناءً على التصنيف، الكاتب، القصة والاسم</p>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 pt-4">
+            <div className="flex overflow-x-auto pb-6 -mx-4 px-4 sm:mx-0 sm:px-0 gap-4 sm:gap-6 pt-4 snap-x snap-mandatory scrollbar-hide">
               {similarWorks.map((work) => (
-                <div key={work.id} className="transition-all duration-300 hover:-translate-y-1">
+                <div key={work.id} className="min-w-[140px] sm:min-w-[180px] md:min-w-[200px] lg:min-w-[220px] transition-all duration-300 hover:-translate-y-1 snap-start shrink-0">
                   <SeriesCard series={work} />
                 </div>
               ))}

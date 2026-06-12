@@ -182,9 +182,23 @@ export const Reader: React.FC = () => {
   const [loading, setLoading] = useState(true);
   
   // Settings
-  const [viewMode, setViewMode] = useState<'vertical' | 'horizontal'>('horizontal');
-  const [fontSize, setFontSize] = useState(18);
-  const [lineHeight, setLineHeight] = useState(1.8);
+  const [viewMode, setViewMode] = useState<'vertical' | 'horizontal'>(() => {
+    const saved = localStorage.getItem('readerViewMode');
+    return (saved as 'vertical' | 'horizontal') || 'horizontal';
+  });
+  const [fontSize, setFontSize] = useState(() => Number(localStorage.getItem('readerFontSize')) || 18);
+  const [lineHeight, setLineHeight] = useState(() => Number(localStorage.getItem('readerLineHeight')) || 1.8);
+  const [fontFamily, setFontFamily] = useState<'serif' | 'sans' | 'mono'>(() => (localStorage.getItem('readerFontFamily') as 'serif' | 'sans' | 'mono') || 'serif');
+  const [novelTheme, setNovelTheme] = useState<'dark' | 'light' | 'sepia'>(() => (localStorage.getItem('readerNovelTheme') as 'dark' | 'light' | 'sepia') || 'dark');
+  
+  useEffect(() => {
+    localStorage.setItem('readerViewMode', viewMode);
+    localStorage.setItem('readerFontSize', fontSize.toString());
+    localStorage.setItem('readerLineHeight', lineHeight.toString());
+    localStorage.setItem('readerFontFamily', fontFamily);
+    localStorage.setItem('readerNovelTheme', novelTheme);
+  }, [viewMode, fontSize, lineHeight, fontFamily, novelTheme]);
+
   const [currentPage, setCurrentPage] = useState(0);
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -198,8 +212,6 @@ export const Reader: React.FC = () => {
     setTimeout(() => setToastMessage(null), 3000);
   };
   
-  const [fontFamily, setFontFamily] = useState<'serif' | 'sans' | 'mono'>('serif');
-  const [novelTheme, setNovelTheme] = useState<'dark' | 'light' | 'sepia'>('dark');
   const [showSettings, setShowSettings] = useState(false);
   
   const [commentsCount, setCommentsCount] = useState(0);
@@ -422,7 +434,7 @@ export const Reader: React.FC = () => {
 
           const { data: allChapters, error: allChaptersError } = await supabase
             .from('chapters')
-            .select('*')
+            .select('id, chapterNumber, title, isPremium, coinPrice')
             .eq('seriesId', s.id)
             .order('chapterNumber', { ascending: true });
           
@@ -714,14 +726,14 @@ export const Reader: React.FC = () => {
                 <button 
                   onClick={(e) => { e.stopPropagation(); setViewMode('vertical'); }}
                   className={`p-2 rounded-lg sm:rounded-xl transition-all ${viewMode === 'vertical' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
-                  title="Vertical Scroll"
+                  title="وضع الويب تون (عمودي)"
                 >
                   <Layout className="w-4 h-4" />
                 </button>
                 <button 
                   onClick={(e) => { e.stopPropagation(); setViewMode('horizontal'); }}
                   className={`p-2 rounded-lg sm:rounded-xl transition-all ${viewMode === 'horizontal' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' : 'text-zinc-500 hover:text-white'}`}
-                  title="Horizontal Paging"
+                  title="وضع الصفحات (أفقي)"
                 >
                   <Layout className="w-4 h-4 rotate-90" />
                 </button>

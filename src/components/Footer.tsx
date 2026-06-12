@@ -38,17 +38,11 @@ export const Footer: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 border-b border-white/5">
-          {/* Logo & Brief Description */}
+          {/* Logo */}
           <div className="md:col-span-2 space-y-4">
             <div className="flex items-center gap-2">
               <span className="text-2xl font-black tracking-tighter text-white">GENZ</span>
-              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 font-bold rounded-md text-[9px] uppercase tracking-wider flex items-center gap-1">
-                <Sparkles className="w-2.5 h-2.5" /> مفتوح المصدر (Open Source)
-              </span>
             </div>
-            <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
-              بوابة متميزة ومفتوحة المصدر لمجتمع محبي قصص المانجا، المانهوا، والروايات المترجمة. نوفر واجهة قراءة تفاعلية سريعة ومصممة بأعلى مستويات الإتقان لتناسب أذواق جيل الشباب.
-            </p>
             <div className="flex items-center gap-3 pt-2">
               <button
                 onClick={handleShare}
@@ -70,7 +64,7 @@ export const Footer: React.FC = () => {
           </div>
 
           {/* Quick Shortcuts */}
-          <div className="space-y-3">
+          <div className="space-y-3 md:col-span-2">
             <h4 className="text-white text-xs font-black uppercase tracking-wider border-r-2 border-emerald-500 pr-2.5">روابط سريعة</h4>
             <ul className="space-y-2.5 text-xs text-zinc-400 font-bold">
               <li>
@@ -87,21 +81,6 @@ export const Footer: React.FC = () => {
               </li>
             </ul>
           </div>
-
-          {/* About & Community */}
-          <div className="space-y-3">
-            <h4 className="text-white text-xs font-black uppercase tracking-wider border-r-2 border-emerald-500 pr-2.5">عن المنصة</h4>
-            <ul className="space-y-2.5 text-xs text-zinc-400 font-bold">
-              <li>
-                <span className="text-[10px] font-black tracking-wide text-zinc-500 block">نوع النظام</span>
-                <span className="text-zinc-300">أوبن سورس بالكامل / مجاني مدى الحياة</span>
-              </li>
-              <li>
-                <span className="text-[10px] font-black tracking-wide text-zinc-500 block">الترخيص برمجياً</span>
-                <span className="text-zinc-300">مُرخص تحت رخصة MIT العالمية</span>
-              </li>
-            </ul>
-          </div>
         </div>
 
         {/* Bottom copyright declaration */}
@@ -111,12 +90,6 @@ export const Footer: React.FC = () => {
             <span>بني بكل</span>
             <Heart className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500/10 animate-pulse mx-0.5" />
             <span>لعشاق القصص والروايات المصورة.</span>
-          </div>
-          
-          <div className="flex items-center gap-1.5">
-            <span className="bg-zinc-900 border border-white/5 rounded-lg px-2.5 py-1 text-[10px] font-mono text-zinc-400">
-              v2.1.0-stable
-            </span>
           </div>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
@@ -17,6 +18,9 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // Secure Password Hashing & Verification via Node.js Native PBKDF2
 function hashPassword(password: string): string {
@@ -39,6 +43,9 @@ async function startServer() {
 
   const app = express();
   const PORT = 3000;
+
+  // Add gzip compression for faster responses
+  app.use(compression());
 
   app.use(express.json());
 
@@ -613,6 +620,20 @@ async function startServer() {
       if (!filename) {
         return res.status(400).send("Filename is required");
       }
+
+      const s3Client = getR2Client();
+      const bucketName = process.env.R2_BUCKET_NAME;
+
+      if (s3Client && bucketName) {
+        await s3Client.send(new PutObjectCommand({
+          Bucket: bucketName,
+          Key: filename,
+          Body: req.body,
+          ContentType: req.headers["content-type"] || "application/octet-stream"
+        }));
+        console.log(`[Cloudflare R2 Proxy] PUT direct saved to R2: ${filename}`);
+        return res.status(200).send("OK");
+      }
       
       const filePath = path.join(process.cwd(), "uploads", filename);
       await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
@@ -621,12 +642,31 @@ async function startServer() {
       console.log(`[Local Upload] Direct PUT saved to: ${filePath}`);
       res.status(200).send("OK");
     } catch (error: any) {
-      console.error("[Local Upload Error] PUT direct upload failed:", error.message);
+      console.error("[Upload Proxy Error] PUT direct upload failed:", error.message);
       res.status(500).send("Upload failed: " + error.message);
     }
   });
 
-  // Base64 image POST upload
+
+
+  function getR2Client() {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+
+    if (!accountId || !accessKeyId || !secretAccessKey) return null;
+
+    return new S3Client({
+      region: "auto",
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId,
+        secretAccessKey,
+      },
+    });
+  }
+
+  // Base64 image POST upload (R2 or fallback to local)
   app.post("/api/upload", async (req, res) => {
     try {
       const { base64Data, filename, contentType } = req.body;
@@ -636,12 +676,34 @@ async function startServer() {
 
       const matches = base64Data.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
       let buffer: Buffer;
+      let finalContentType = contentType || "application/octet-stream";
+      
       if (matches && matches.length === 3) {
+        finalContentType = contentType || `image/${matches[1]}`;
         buffer = Buffer.from(matches[2], "base64");
       } else {
         buffer = Buffer.from(base64Data, "base64");
       }
 
+      const s3Client = getR2Client();
+      const bucketName = process.env.R2_BUCKET_NAME;
+      const publicUrl = process.env.R2_PUBLIC_URL;
+
+      if (s3Client && bucketName && publicUrl) {
+        const safeFilename = `${Date.now()}-${filename.replace(/[^a-zA-Z0-9./-]/g, '_')}`;
+        await s3Client.send(new PutObjectCommand({
+          Bucket: bucketName,
+          Key: safeFilename,
+          Body: buffer,
+          ContentType: finalContentType
+        }));
+        
+        const fileUrl = `${publicUrl.replace(/\/+$/, '')}/${safeFilename}`;
+        console.log(`[Cloudflare R2 Upload] POST saved to: ${fileUrl}`);
+        return res.json({ url: fileUrl });
+      }
+
+      // Fallback to local
       const filePath = path.join(process.cwd(), "uploads", filename);
       await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
       await fs.promises.writeFile(filePath, buffer);
@@ -649,12 +711,15 @@ async function startServer() {
       console.log(`[Local Upload] POST saved to: ${filePath}`);
       res.json({ url: `/uploads/${filename}` });
     } catch (error: any) {
-      console.error("[Local Upload Error] POST upload failed:", error.message);
+      console.error("[Upload Error] POST upload failed:", error.message);
       res.status(500).json({ error: "Upload failed: " + error.message });
     }
   });
 
-  // Local high-performance single presign
+  // Proxy endpoint can remain the same
+
+
+
   app.post("/api/local-presign", async (req, res) => {
     try {
       const { filename, contentType } = req.body;
@@ -662,15 +727,23 @@ async function startServer() {
         return res.status(400).json({ error: "Filename and contentType are required" });
       }
 
+      const s3Client = getR2Client();
+      const publicUrl = process.env.R2_PUBLIC_URL;
+
       const cleanFilename = filename.replace(/[^a-zA-Z0-9./-]/g, '_');
       const safeFilename = `manga/${Date.now()}-${cleanFilename}`;
-      const uploadUrl = `/api/upload-direct?filename=${encodeURIComponent(safeFilename)}`;
-      const url = `/uploads/${safeFilename}`;
 
-      res.json({ uploadUrl, url });
+      const uploadUrl = `/api/upload-direct?filename=${encodeURIComponent(safeFilename)}`;
+      let url = `/uploads/${safeFilename}`;
+
+      if (s3Client && publicUrl) {
+         url = `${publicUrl.replace(/\/+$/, '')}/${safeFilename}`;
+      }
+
+      return res.json({ uploadUrl, url });
     } catch (error: any) {
-      console.error("[Local Presign Error] Single build failed:", error.message);
-      res.status(500).json({ error: "Failed to create local upload link" });
+      console.error("[Presign Error] Single build failed:", error.message);
+      res.status(500).json({ error: "Failed to create upload link" });
     }
   });
 
@@ -682,18 +755,27 @@ async function startServer() {
         return res.status(400).json({ error: "Files array is required" });
       }
 
-      const results = files.map((f: any) => {
+      const s3Client = getR2Client();
+      const publicUrl = process.env.R2_PUBLIC_URL;
+
+      const results = [];
+      for (const f of files) {
         const cleanFilename = f.filename.replace(/[^a-zA-Z0-9./-]/g, '_');
         const safeFilename = `manga/${Date.now()}-${cleanFilename}`;
+        
         const uploadUrl = `/api/upload-direct?filename=${encodeURIComponent(safeFilename)}`;
-        const url = `/uploads/${safeFilename}`;
-        return { uploadUrl, url, filename: f.filename };
-      });
+        let url = `/uploads/${safeFilename}`;
+
+        if (s3Client && publicUrl) {
+           url = `${publicUrl.replace(/\/+$/, '')}/${safeFilename}`;
+        }
+        results.push({ uploadUrl, url, filename: f.filename });
+      }
 
       res.json({ results });
     } catch (error: any) {
-      console.error("[Local Presign Error] Batch build failed:", error.message);
-      res.status(500).json({ error: "Failed to create local batch upload links" });
+      console.error("[Presign Error] Batch build failed:", error.message);
+      res.status(500).json({ error: "Failed to create batch upload links" });
     }
   });
 

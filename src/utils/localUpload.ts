@@ -59,6 +59,13 @@ export async function uploadToLocal(
     }
     console.log(`[Local Upload] Payload footprint: ${blob.size} bytes`);
 
+    // 2.5 Check size threshold (50KB)
+    if (blob.size <= 50 * 1024) {
+      console.log(`[Local Upload] Size is ${blob.size} bytes (<= 50KB), keeping as base64 inline for Firebase.`);
+      // If we pre-fetched an endpoint but didn't need it, we just ignore it.
+      return base64Data;
+    }
+
     // 3. Perform binary PUT uploading via XMLHttpRequest for real-time progress callbacks
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();

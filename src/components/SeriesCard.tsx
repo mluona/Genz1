@@ -77,31 +77,38 @@ export const SeriesCard: React.FC<Props> = ({ series, compact = false }) => {
           <Clock className="w-3 h-3" />
           <span>
             {(() => {
-              const result = formatDistanceToNow(new Date(series.lastUpdated), { addSuffix: true });
-              return result
-                .replace('about ', 'تقريباً ')
-                .replace('over ', 'أكثر من ')
-                .replace('almost ', 'تقريباً ')
-                .replace('less than ', 'أقل من ')
-                .replace('a few seconds ago', 'منذ بضع ثوانٍ')
-                .replace('half a minute ago', 'منذ نصف دقيقة')
-                .replace('less than a minute ago', 'منذ أقل من دقيقة')
-                .replace(' minutes ago', ' دقائق مضت')
-                .replace(' minute ago', ' دقيقة مضت')
-                .replace(' hours ago', ' ساعات مضت')
-                .replace(' hour ago', ' ساعة مضت')
-                .replace(' days ago', ' أيام مضت')
-                .replace(' day ago', ' يوم مضت')
-                .replace(' months ago', ' أشهر مضت')
-                .replace(' month ago', ' شهر مضت')
-                .replace(' years ago', ' سنوات مضت')
-                .replace(' year ago', ' سنة مضت')
-                .replace('a minute ago', 'منذ دقيقة')
-                .replace('an hour ago', 'منذ ساعة')
-                .replace('a day ago', 'منذ يوم')
-                .replace('a month ago', 'منذ شهر')
-                .replace('a year ago', 'منذ سنة')
-                .replace('ago', 'مضت');
+              if (!series.lastUpdated) return 'غير معروف';
+              try {
+                const dateObj = new Date(series.lastUpdated);
+                if (isNaN(dateObj.getTime())) return 'غير معروف';
+                const result = formatDistanceToNow(dateObj, { addSuffix: true });
+                return result
+                  .replace('about ', 'تقريباً ')
+                  .replace('over ', 'أكثر من ')
+                  .replace('almost ', 'تقريباً ')
+                  .replace('less than ', 'أقل من ')
+                  .replace('a few seconds ago', 'منذ بضع ثوانٍ')
+                  .replace('half a minute ago', 'منذ نصف دقيقة')
+                  .replace('less than a minute ago', 'منذ أقل من دقيقة')
+                  .replace(' minutes ago', ' دقائق مضت')
+                  .replace(' minute ago', ' دقيقة مضت')
+                  .replace(' hours ago', ' ساعات مضت')
+                  .replace(' hour ago', ' ساعة مضت')
+                  .replace(' days ago', ' أيام مضت')
+                  .replace(' day ago', ' يوم مضت')
+                  .replace(' months ago', ' أشهر مضت')
+                  .replace(' month ago', ' شهر مضت')
+                  .replace(' years ago', ' سنوات مضت')
+                  .replace(' year ago', ' سنة مضت')
+                  .replace('a minute ago', 'منذ دقيقة')
+                  .replace('an hour ago', 'منذ ساعة')
+                  .replace('a day ago', 'منذ يوم')
+                  .replace('a month ago', 'منذ شهر')
+                  .replace('a year ago', 'منذ سنة')
+                  .replace('ago', 'مضت');
+              } catch(e) {
+                return 'غير معروف';
+              }
             })()}
           </span>
         </div>
