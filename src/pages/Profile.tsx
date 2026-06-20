@@ -491,12 +491,16 @@ export const Profile: React.FC = () => {
                     />
                   </div>
 
-                  <div className="flex items-center gap-3 p-4 bg-zinc-950/60 rounded-2xl border border-white/5 mb-2">
-                    <Upload className="w-5 h-5 text-zinc-500" />
-                    <div className="flex-1 text-right">
-                      <p className="text-xs text-zinc-300 font-bold">رابط صورة الملف الشخصي المرفوعة</p>
-                      <p className="text-[10px] text-zinc-500 font-mono text-left truncate mt-1" dir="ltr">{formData.profilePicture || "لم يتم رفع أي ملف بعد."}</p>
-                    </div>
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-widest text-zinc-400 mb-2">رابط صورة الملف الشخصي</label>
+                    <input 
+                      type="text" 
+                      value={formData.profilePicture}
+                      onChange={e => setFormData({...formData, profilePicture: e.target.value})}
+                      className="w-full bg-zinc-950 border border-white/10 rounded-2xl px-4 py-3.5 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/30 outline-none text-white font-medium"
+                      placeholder="أدخل رابط صورة (مثل https://imgur.com/...)"
+                      dir="ltr"
+                    />
                   </div>
 
                   <div className="flex gap-4 pt-4 border-t border-white/5">

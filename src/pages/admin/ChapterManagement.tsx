@@ -1237,33 +1237,68 @@ export const ChapterManagement: React.FC = () => {
                   ) : (
                     <div className="space-y-8">
                       {/* Upload Zones */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div 
-                          onClick={() => fileInputRef.current?.click()}
-                          className="group relative border-2 border-dashed border-zinc-200 rounded-[2rem] p-8 flex flex-col items-center justify-center gap-4 hover:border-blue-500 hover:bg-blue-50/50 transition-all cursor-pointer"
-                        >
-                          <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <Upload className="w-6 h-6" />
-                          </div>
-                          <div className="text-center">
-                            <p className="text-sm font-black uppercase tracking-tight">Upload Images</p>
-                            <p className="text-[10px] font-medium text-zinc-400 mt-1 uppercase tracking-widest">JPG, PNG, WEBP, etc.</p>
-                          </div>
-                          <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+                      <div className="space-y-4">
+                        <div className="flex gap-4 items-center">
+                          <input
+                            type="text"
+                            placeholder="Add image URL directly... (e.g. https://imgur.com/...)"
+                            id="manual-url-input"
+                            className="flex-1 bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const val = (e.target as HTMLInputElement).value;
+                                if (val) {
+                                  setFormData(prev => ({ ...prev, content: [...prev.content, val] }));
+                                  (e.target as HTMLInputElement).value = '';
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="bg-emerald-500 hover:bg-emerald-400 text-black font-bold py-3 px-6 rounded-2xl transition-colors"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const input = document.getElementById('manual-url-input') as HTMLInputElement;
+                              const val = input?.value;
+                              if (val) {
+                                setFormData(prev => ({ ...prev, content: [...prev.content, val] }));
+                                input.value = '';
+                              }
+                            }}
+                          >
+                            Add URL
+                          </button>
                         </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="group relative border-2 border-dashed border-zinc-200 rounded-[2rem] p-8 flex flex-col items-center justify-center gap-4 hover:border-blue-500 hover:bg-blue-50/50 transition-all cursor-pointer"
+                          >
+                            <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                              <Upload className="w-6 h-6" />
+                            </div>
+                            <div className="text-center">
+                              <p className="text-sm font-black uppercase tracking-tight">Upload Images</p>
+                              <p className="text-[10px] font-medium text-zinc-400 mt-1 uppercase tracking-widest">JPG, PNG, WEBP, etc.</p>
+                            </div>
+                            <input type="file" multiple accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
+                          </div>
 
-                        <div 
-                          onClick={() => zipInputRef.current?.click()}
-                          className="group relative border-2 border-dashed border-zinc-200 rounded-[2rem] p-8 flex flex-col items-center justify-center gap-4 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer"
-                        >
-                          <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <FileArchive className="w-6 h-6" />
+                          <div 
+                            onClick={() => zipInputRef.current?.click()}
+                            className="group relative border-2 border-dashed border-zinc-200 rounded-[2rem] p-8 flex flex-col items-center justify-center gap-4 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all cursor-pointer"
+                          >
+                            <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                              <FileArchive className="w-6 h-6" />
+                            </div>
+                            <div className="text-center">
+                              <p className="text-sm font-black uppercase tracking-tight">Upload ZIP</p>
+                              <p className="text-[10px] font-medium text-zinc-400 mt-1 uppercase tracking-widest">Auto-extract images</p>
+                            </div>
+                            <input type="file" accept=".zip" className="hidden" ref={zipInputRef} onChange={handleZipUpload} />
                           </div>
-                          <div className="text-center">
-                            <p className="text-sm font-black uppercase tracking-tight">Upload ZIP</p>
-                            <p className="text-[10px] font-medium text-zinc-400 mt-1 uppercase tracking-widest">Auto-extract images</p>
-                          </div>
-                          <input type="file" accept=".zip" className="hidden" ref={zipInputRef} onChange={handleZipUpload} />
                         </div>
                       </div>
 

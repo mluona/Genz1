@@ -643,10 +643,14 @@ export const SeriesManagement: React.FC = () => {
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Cover Image</label>
                     <div className="flex flex-col gap-4">
                       <div className="flex gap-4">
-                        <div className="flex-1 bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-zinc-400 text-sm flex items-center truncate">
-                          {formData.coverImage ? 'Image uploaded' : 'No image uploaded'}
-                        </div>
-                        <label className="p-3 bg-zinc-100 rounded-2xl text-zinc-500 hover:bg-zinc-200 cursor-pointer transition-colors relative">
+                        <input
+                          type="text"
+                          value={formData.coverImage}
+                          onChange={(e) => setFormData({...formData, coverImage: e.target.value})}
+                          placeholder="رابط الصورة (URL) أو قم بالرفع"
+                          className="flex-1 bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                        />
+                        <label className="p-3 bg-zinc-100 rounded-2xl text-zinc-500 hover:bg-zinc-200 cursor-pointer transition-colors relative flex items-center justify-center min-w-[3rem]">
                           {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
                           <input 
                             type="file" 
@@ -681,10 +685,14 @@ export const SeriesManagement: React.FC = () => {
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Background Image (Optional)</label>
                     <div className="flex flex-col gap-4">
                       <div className="flex gap-4">
-                        <div className="flex-1 bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-zinc-400 text-sm flex items-center truncate">
-                          {formData.backgroundImage ? 'Image uploaded' : 'No image uploaded'}
-                        </div>
-                        <label className="p-3 bg-zinc-100 rounded-2xl text-zinc-500 hover:bg-zinc-200 cursor-pointer transition-colors relative">
+                        <input
+                          type="text"
+                          value={formData.backgroundImage}
+                          onChange={(e) => setFormData({...formData, backgroundImage: e.target.value})}
+                          placeholder="رابط خلفية العمل (اختياري) أو قم بالرفع"
+                          className="flex-1 bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                        />
+                        <label className="p-3 bg-zinc-100 rounded-2xl text-zinc-500 hover:bg-zinc-200 cursor-pointer transition-colors relative flex items-center justify-center min-w-[3rem]">
                           {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
                           <input 
                             type="file" 
