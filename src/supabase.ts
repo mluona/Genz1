@@ -1,29 +1,23 @@
-// Advanced client-side Supabase Adapter bridging directly to our server-side SQLite engine.
-// All reads, writes, and profile checks are routed to SQLite on port 3000.
+// Supabase-like adapter bridging directly to Firebase Firestore
+import { db, auth } from "./firebase";
+import { 
+  collection, doc, query, where, orderBy, limit as firestoreLimit, getDocs, getDoc, setDoc, updateDoc, deleteDoc, writeBatch, onSnapshot 
+} from "firebase/firestore";
+import { 
+  signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, updateProfile 
+} from "firebase/auth";
 
-const tableListeners: Array<{ tableName: string; callback: (payload: any) => void }> = [];
+const tableListeners: Array<{ tableName: string; callback: (payload: any) => void; unsubscribe?: () => void }> = [];
 const authListeners: Array<(event: string, session: any) => void> = [];
 
-// Local session helpers
-function getSessionUser(): any | null {
-  const sessionStr = localStorage.getItem("session_user");
-  if (!sessionStr) return null;
-  try {
-    return JSON.parse(sessionStr);
-  } catch (e) {
-    return null;
-  }
-}
+// Listen to firebase auth state
+onAuthStateChanged(auth, (user) => {
+  const session = user ? { user: { id: user.uid, email: user.email, user_metadata: { full_name: user.displayName } }, access_token: "firebase_token" } : null;
+  authListeners.forEach(listener => {
+    listener(user ? "SIGNED_IN" : "SIGNED_OUT", session);
+  });
+});
 
-function setSessionUser(user: any | null) {
-  if (user) {
-    localStorage.setItem("session_user", JSON.stringify(user));
-  } else {
-    localStorage.removeItem("session_user");
-  }
-}
-
-// Chained Query Builder communicating with SQLite Express API on backend
 class SupabaseQueryBuilder {
   private tableName: string;
   private operation: "select" | "insert" | "update" | "delete" = "select";
@@ -65,53 +59,22 @@ class SupabaseQueryBuilder {
     return this;
   }
 
-  eq(field: string, val: any) {
-    this.filters.push({ field, op: "==", val });
-    return this;
-  }
-
-  neq(field: string, val: any) {
-    this.filters.push({ field, op: "!=", val });
-    return this;
-  }
-
-  in(field: string, list: any[]) {
-    this.filters.push({ field, op: "in", val: list });
-    return this;
-  }
-
-  like(field: string, pattern: string) {
-    this.filters.push({ field, op: "like", val: pattern });
-    return this;
-  }
-
-  is(field: string, val: any) {
-    this.filters.push({ field, op: "is", val });
-    return this;
-  }
-
+  eq(field: string, val: any) { this.filters.push({ field, op: "==", val }); return this; }
+  neq(field: string, val: any) { this.filters.push({ field, op: "!=", val }); return this; }
+  in(field: string, list: any[]) { this.filters.push({ field, op: "in", val: list }); return this; }
+  like(field: string, pattern: string) { this.filters.push({ field, op: "like", val: pattern }); return this; }
+  is(field: string, val: any) { this.filters.push({ field, op: "==", val }); return this; }
+  
   order(field: string, { ascending = true } = {}) {
     this.orderField = field;
     this.orderAscending = ascending;
     return this;
   }
 
-  limit(count: number) {
-    this.limitCount = count;
-    return this;
-  }
+  limit(count: number) { this.limitCount = count; return this; }
+  single() { this.isSingle = true; return this; }
+  maybeSingle() { this.isMaybeSingle = true; return this; }
 
-  single() {
-    this.isSingle = true;
-    return this;
-  }
-
-  maybeSingle() {
-    this.isMaybeSingle = true;
-    return this;
-  }
-
-  // Thenable execution for seamless await/then pattern support
   async then(onfulfilled?: (value: any) => any, onrejected?: (reason: any) => any) {
     try {
       const res = await this.execute();
@@ -125,52 +88,98 @@ class SupabaseQueryBuilder {
 
   private async execute() {
     try {
-      const response = await fetch("/api/db", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          tableName: this.tableName,
-          operation: this.operation,
-          filters: this.filters,
-          orderField: this.orderField,
-          orderAscending: this.orderAscending,
-          limitCount: this.limitCount,
-          isSingle: this.isSingle,
-          isMaybeSingle: this.isMaybeSingle,
-          data: this.operation === "insert" ? this.insertData : (this.operation === "update" ? this.updateData : null)
-        })
-      });
+      if (this.operation === "select") {
+        let q: any = collection(db, this.tableName);
+        
+        for (const f of this.filters) {
+          if (f.op === "==") q = query(q, where(f.field, "==", f.val));
+          else if (f.op === "!=") q = query(q, where(f.field, "!=", f.val));
+          else if (f.op === "in") {
+            if (f.val && f.val.length > 0) q = query(q, where(f.field, "in", f.val));
+          }
+        }
+        
+        if (this.orderField) {
+          q = query(q, orderBy(this.orderField, this.orderAscending ? 'asc' : 'desc'));
+        }
+        if (this.limitCount) {
+          q = query(q, firestoreLimit(this.limitCount));
+        }
 
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`SQLite bridge returned: ${text}`);
-      }
+        const snapshot = await getDocs(q);
+        const resultData: any[] = [];
+        snapshot.forEach(doc => {
+          resultData.push({ id: doc.id, ...doc.data() });
+        });
 
-      const result = await response.json();
+        if (this.isSingle) {
+          if (resultData.length === 0) {
+            return { data: null, error: { code: 'PGRST116', message: "No rows found" } };
+          }
+          return { data: resultData[0], error: null };
+        }
+        if (this.isMaybeSingle) {
+          return { data: resultData.length > 0 ? resultData[0] : null, error: null };
+        }
+        return { data: resultData, error: null, count: resultData.length };
+      } 
+      else if (this.operation === "insert") {
+        const isArray = Array.isArray(this.insertData);
+        const dataArr = isArray ? this.insertData : [this.insertData];
+        const batch = writeBatch(db);
+        const resultData: any[] = [];
+        
+        for (const item of dataArr) {
+          let docRef;
+          if (item.id) {
+            docRef = doc(db, this.tableName, item.id);
+          } else {
+            docRef = doc(collection(db, this.tableName));
+            item.id = docRef.id;
+          }
+          batch.set(docRef, item);
+          resultData.push(item);
+        }
+        await batch.commit();
 
-      // Trigger standard reactive real-time feedback loops locally on changes
-      if (["insert", "update", "delete"].includes(this.operation) && result.data) {
-        const payload = {
-          eventType: this.operation.toUpperCase(),
-          new: this.operation !== "delete" ? result.data : undefined,
-          old: this.operation === "delete" ? result.data : undefined
-        };
-        tableListeners.forEach(listener => {
-          if (listener.tableName === this.tableName) {
-            try {
-              listener.callback(payload);
-            } catch (e) {
-              console.error("[Realtime callback error]:", e);
-            }
+        const ret = isArray ? resultData : resultData[0];
+        tableListeners.forEach(l => {
+          if (l.tableName === this.tableName) {
+            isArray ? resultData.forEach(d => l.callback({ eventType: "INSERT", new: d })) : l.callback({ eventType: "INSERT", new: ret });
           }
         });
-      }
 
-      return result;
+        if (this.isSingle || this.isMaybeSingle) return { data: resultData[0], error: null };
+        return { data: resultData, error: null };
+      }
+      else if (this.operation === "update") {
+         // Requires an ID filter to update
+         const idFilter = this.filters.find(f => f.field === "id");
+         if (!idFilter) throw new Error("Update requires an eq('id', val) filter");
+         
+         const docRef = doc(db, this.tableName, idFilter.val);
+         await updateDoc(docRef, this.updateData);
+         
+         tableListeners.forEach(l => {
+           if (l.tableName === this.tableName) l.callback({ eventType: "UPDATE", new: { id: idFilter.val, ...this.updateData } });
+         });
+         
+         return { data: null, error: null };
+      }
+      else if (this.operation === "delete") {
+         const idFilter = this.filters.find(f => f.field === "id");
+         if (idFilter) {
+           const docRef = doc(db, this.tableName, idFilter.val);
+           await deleteDoc(docRef);
+           tableListeners.forEach(l => {
+             if (l.tableName === this.tableName) l.callback({ eventType: "DELETE", old: { id: idFilter.val } });
+           });
+         }
+         return { data: null, error: null };
+      }
+      return { data: null, error: { message: "Unknown operation" } };
     } catch (err: any) {
-      console.error(`[SQLite Bridge failure on table ${this.tableName}]:`, err);
+      console.error(`[Firebase Bridge failure on table ${this.tableName}]:`, err);
       return { data: null, error: { message: err.message || String(err) } };
     }
   }
@@ -179,6 +188,7 @@ class SupabaseQueryBuilder {
 class SupabaseChannel {
   private tableName: string;
   private callback: (payload: any) => void = () => {};
+  private unsubscribeFn?: () => void;
 
   constructor(channelName: string) {
     this.tableName = channelName.replace("_changes", "");
@@ -193,11 +203,24 @@ class SupabaseChannel {
   }
 
   subscribe() {
-    tableListeners.push({ tableName: this.tableName, callback: this.callback });
+    const q = collection(db, this.tableName);
+    this.unsubscribeFn = onSnapshot(q, (snapshot) => {
+      // Very basic simulation of postgres_changes
+      snapshot.docChanges().forEach((change) => {
+         const payload = {
+            eventType: change.type === "added" ? "INSERT" : change.type === "modified" ? "UPDATE" : "DELETE",
+            new: change.type !== "removed" ? { id: change.doc.id, ...change.doc.data() } : undefined,
+            old: change.type === "removed" ? { id: change.doc.id, ...change.doc.data() } : undefined
+         };
+         this.callback(payload);
+      });
+    });
+    tableListeners.push({ tableName: this.tableName, callback: this.callback, unsubscribe: this.unsubscribeFn });
     return this;
   }
 
   unsubscribe() {
+    if (this.unsubscribeFn) this.unsubscribeFn();
     const idx = tableListeners.findIndex(l => l.tableName === this.tableName && l.callback === this.callback);
     if (idx !== -1) {
       tableListeners.splice(idx, 1);
@@ -205,7 +228,7 @@ class SupabaseChannel {
   }
 }
 
-// Global Supabase Gateway
+// Global Supabase Gateway mapped to Firebase
 export const supabase = {
   from(tableName: string) {
     return new SupabaseQueryBuilder(tableName);
@@ -223,13 +246,13 @@ export const supabase = {
 
   auth: {
     async getSession() {
-      const user = getSessionUser();
-      if (!user) return { data: { session: null }, error: null };
+      const u = auth.currentUser;
+      if (!u) return { data: { session: null }, error: null };
       return {
         data: {
           session: {
-            user,
-            access_token: "local_token"
+             user: { id: u.uid, email: u.email, user_metadata: { full_name: u.displayName } },
+             access_token: "firebase_token"
           }
         },
         error: null
@@ -237,24 +260,21 @@ export const supabase = {
     },
 
     async getUser() {
-      const user = getSessionUser();
-      if (!user) return { data: { user: null }, error: null };
+      const u = auth.currentUser;
+      if (!u) return { data: { user: null }, error: null };
       return {
-        data: { user },
+        data: { user: { id: u.uid, email: u.email, user_metadata: { full_name: u.displayName } } },
         error: null
       };
     },
 
     onAuthStateChange(callback: (event: string, session: any) => void) {
-      const user = getSessionUser();
-      const initialSession = user ? { user, access_token: "local_token" } : null;
-
-      setTimeout(() => {
-        callback(user ? "SIGNED_IN" : "SIGNED_OUT", initialSession);
-      }, 0);
-
       authListeners.push(callback);
-
+      // Run once immediately if currentUser exists
+      if (auth.currentUser) {
+         const u = auth.currentUser;
+         callback("SIGNED_IN", { user: { id: u.uid, email: u.email, user_metadata: { full_name: u.displayName } }, access_token: "firebase_token" });
+      }
       return {
         data: {
           subscription: {
@@ -270,20 +290,19 @@ export const supabase = {
     async signUp({ email, password, options }: any) {
       try {
         const username = options?.data?.full_name || email.split("@")[0];
-        const response = await fetch("/api/auth/signup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, username })
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(userCredential.user, { displayName: username });
+        // Setup initial user profile in unified profiles table
+        await setDoc(doc(db, "profiles", userCredential.user.uid), {
+           id: userCredential.user.uid,
+           email: email,
+           username: username,
+           role: 'user',
+           coins: 100,
+           createdAt: new Date().toISOString()
         });
-        const result = await response.json();
-        if (!response.ok || result.error) {
-          throw new Error(result.error || "فشل تسجيل حساب جديد");
-        }
-        const user = result.user;
-        setSessionUser(user);
-        const session = { user, access_token: "local_token" };
-        authListeners.forEach(listener => listener("SIGNED_IN", session));
-        return { data: { user, session }, error: null };
+        const session = { user: { id: userCredential.user.uid, email, user_metadata: { full_name: username } }, access_token: "firebase_token" };
+        return { data: { user: session.user, session }, error: null };
       } catch (e: any) {
         return { data: null, error: { message: e.message || String(e) } };
       }
@@ -291,95 +310,48 @@ export const supabase = {
 
     async signInWithPassword({ email, password }: any) {
       try {
-        const response = await fetch("/api/auth/signin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password })
-        });
-        const result = await response.json();
-        if (!response.ok || result.error) {
-          throw new Error(result.error || "فشل تسجيل الدخول");
-        }
-        const user = result.user;
-        setSessionUser(user);
-        const session = { user, access_token: "local_token" };
-        authListeners.forEach(listener => listener("SIGNED_IN", session));
-        return { data: { user, session }, error: null };
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const session = { user: { id: userCredential.user.uid, email, user_metadata: { full_name: userCredential.user.displayName } }, access_token: "firebase_token" };
+        return { data: { user: session.user, session }, error: null };
       } catch (e: any) {
-        return { data: null, error: { message: e.message || String(e) } };
+        return { data: null, error: { message: "فشل تسجيل الدخول: " + e.message } };
       }
     },
 
     async signInWithOAuth({ provider }: any) {
       try {
-        // Construct the popup redirect uri matching our callback endpoint
-        const redirectUri = window.location.origin + `/api/auth/callback/${provider}`;
-        
-        // Fetch the provider OAuth URL from our server
-        const response = await fetch(`/api/auth/url?provider=${provider}&redirect_uri=${encodeURIComponent(redirectUri)}`);
-        const result = await response.json();
-        
-        if (result.error_missing_env) {
-          throw new Error(`يرجى تحديد المتغير ${result.error_missing_env} في إعدادات البيئة بـ AI Studio لتفعيل المصادقة عبر ${provider}.`);
+        if (provider !== "google") {
+          throw new Error("Only google is currently implemented for OAuth");
         }
-        if (result.error || !result.url) {
-          throw new Error(result.error || "تعذر الحصول على رابط المصادقة");
-        }
+        const googleProvider = new GoogleAuthProvider();
+        const userCredential = await signInWithPopup(auth, googleProvider);
+        const user = userCredential.user;
         
-        // Open the OAuth provider in a popup window
-        const width = 600;
-        const height = 700;
-        const left = window.screenX + (window.outerWidth - width) / 2;
-        const top = window.screenY + (window.outerHeight - height) / 2;
-        const popup = window.open(
-          result.url,
-          `oauth-signin-${provider}`,
-          `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
-        );
-        
-        if (!popup) {
-          throw new Error("تم حظر النافذة المنبثقة! يرجى السماح بالنوافذ المنبثقة لتسجيل الدخول.");
+        // Ensure user is in firestore profiles table
+        const userDoc = await getDoc(doc(db, "profiles", user.uid));
+        if (!userDoc.exists()) {
+           await setDoc(doc(db, "profiles", user.uid), {
+             id: user.uid,
+             email: user.email,
+             username: user.displayName || user.email?.split("@")[0],
+             role: 'user',
+             coins: 100,
+             createdAt: new Date().toISOString(),
+             avatarUrl: user.photoURL
+           });
         }
         
-        // Return a promise that resolves when the popup sends a postMessage
-        return new Promise((resolve) => {
-          let checkClosedTimer: any = null;
-          
-          const handleMessage = (event: MessageEvent) => {
-            if (event.data && event.data.type === "OAUTH_AUTH_SUCCESS") {
-              const user = event.data.user;
-              setSessionUser(user);
-              const session = { user, access_token: "local_token" };
-              authListeners.forEach(listener => listener("SIGNED_IN", session));
-              
-              window.removeEventListener("message", handleMessage);
-              if (checkClosedTimer) clearInterval(checkClosedTimer);
-              resolve({ data: { user, session }, error: null });
-            }
-          };
-          
-          window.addEventListener("message", handleMessage);
-          
-          // Poll to check if popup is closed without success
-          checkClosedTimer = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(checkClosedTimer);
-              setTimeout(() => {
-                window.removeEventListener("message", handleMessage);
-                resolve({ data: null, error: { message: "تم إغلاق النافذة المنبثقة قبل إتمام تسجيل الدخول." } });
-              }, 1000);
-            }
-          }, 500);
-        });
+        const session = { user: { id: user.uid, email: user.email, user_metadata: { full_name: user.displayName } }, access_token: "firebase_token" };
+        return { data: { user: session.user, session }, error: null };
       } catch (e: any) {
         return { data: null, error: { message: e.message || String(e) } };
       }
     },
 
     async signOut() {
-      setSessionUser(null);
-      authListeners.forEach(listener => listener("SIGNED_OUT", null));
+      await fbSignOut(auth);
       return { error: null };
     }
   }
 };
+

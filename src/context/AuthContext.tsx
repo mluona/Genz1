@@ -59,7 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('uid', uid)
+        .eq('id', uid)
         .single();
 
       if (error && error.code === 'PGRST116') {
