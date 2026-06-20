@@ -645,29 +645,7 @@ export const ChapterManagement: React.FC = () => {
             .map((content, i) => ({ content, i }))
             .filter(item => item.content.startsWith('data:image'));
           
-          let presignedData: any[] = [];
-          if (imagesToPresign.length > 0) {
-            setSavingProgress(prev => ({ ...prev, status: 'Preparing local upload paths...' }));
-            const presignResponse = await fetch('/api/local-presign-batch', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                files: imagesToPresign.map(item => {
-                  const mimeType = item.content.match(/data:(.*?);/)?.[1] || 'image/jpeg';
-                  const ext = mimeType.split('/')[1] || 'jpg';
-                  return {
-                    filename: `${selectedSeries.id}/${chapterId}/page_${item.i}_${Date.now()}.${ext}`,
-                    contentType: mimeType
-                  };
-                })
-              })
-            });
-            if (presignResponse.ok) {
-              const { results } = await presignResponse.json();
-              presignedData = results;
-            }
-            setSavingProgress(prev => ({ ...prev, status: 'Uploading pages locally...' }));
-          }
+          setSavingProgress(prev => ({ ...prev, status: 'Uploading pages directly to cloud...' }));
 
           // Concurrency limit for uploads
           const CONCURRENCY_LIMIT = 15;
@@ -677,9 +655,10 @@ export const ChapterManagement: React.FC = () => {
             const { content, i } = task;
             if (content.startsWith('data:image')) {
               try {
-                const preFetched = presignedData.find(p => p.filename.includes(`page_${i}_`));
                 const mimeType = content.match(/data:(.*?);/)?.[1] || 'image/jpeg';
-                const url = await uploadToLocal(content, `page_${i}`, mimeType, undefined, preFetched);
+                const fileExt = mimeType.split('/')[1] || 'jpg';
+                const filename = `${selectedSeries.id}/${chapterId}/page_${i}_${Date.now()}.${fileExt}`;
+                const url = await uploadToLocal(content, filename, mimeType);
                 uploadedUrls[i] = url;
               } catch (err) {
                 console.error(`Failed to upload page ${i} locally:`, err);

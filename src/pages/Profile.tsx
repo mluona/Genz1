@@ -8,6 +8,7 @@ import {
   ArrowLeft, Upload, CheckCircle, AlertCircle, BookOpen, Clock, Tag
 } from 'lucide-react';
 import { Series, Transaction, CoinPackage } from '../types';
+import { uploadToLocal } from '../utils/localUpload';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
 export const Profile: React.FC = () => {
@@ -184,31 +185,34 @@ export const Profile: React.FC = () => {
     
     setIsUploading(true);
     try {
-      const res = await fetch('/api/local-presign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: file.name, contentType: file.type })
+      // Create object URL for instant preview while uploading
+      const objectUrl = URL.createObjectURL(file);
+      setFormData(prev => ({ ...prev, profilePicture: objectUrl }));
+      
+      const fileExt = file.name.split('.').pop() || 'jpg';
+      const filename = `profile_pictures/${user?.id}_${Date.now()}.${fileExt}`;
+      
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
       });
-      const { uploadUrl, url } = await res.json();
+      const base64Data = await base64Promise;
       
-      await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file
-      });
-      
-      const fullUrl = window.location.origin + url + "?t=" + Date.now();
-      
-      setFormData(prev => ({ ...prev, profilePicture: fullUrl }));
+      const downloadUrl = await uploadToLocal(base64Data, filename, file.type);
+      if (!downloadUrl) throw new Error("Upload failed, no URL returned");
       
       // Update directly so user has instantaneous persistent updates
       const { error: dbError } = await supabase
         .from('profiles')
-        .update({ profilePicture: fullUrl })
-        .eq('id', user.id);
+        .update({ profilePicture: downloadUrl })
+        .eq('id', user?.id || '');
       
       if (dbError) throw dbError;
       
-      await refreshProfile(user.id);
+      setFormData(prev => ({ ...prev, profilePicture: downloadUrl }));
+      if (user) await refreshProfile(user.id);
     } catch (err) {
       console.error("Upload failed", err);
     } finally {

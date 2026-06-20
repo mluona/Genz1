@@ -1,5 +1,8 @@
-// Dynamic High-Performance Local-First Upload Engine
-// Stores files locally under /uploads and references them cleanly using SQLite.
+// Dynamic High-Performance Cloud Upload Engine
+// Stores files in Firebase Storage and returns public URLs.
+
+import { ref, uploadString, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import { storage } from '../firebase';
 
 export async function uploadToLocal(
   base64Data: string, 
@@ -9,34 +12,15 @@ export async function uploadToLocal(
   preFetched?: { uploadUrl: string, url: string }
 ): Promise<string | null> {
   try {
-    let uploadUrl: string;
-    let url: string;
+    console.log(`[Cloud Upload] Acquiring cloud reference for ${filename}...`);
+    
+    // Clean filename to be safe
+    const cleanFilename = filename.replace(/[^a-zA-Z0-9./-_]/g, '_');
+    const safePath = `uploads/${Date.now()}-${cleanFilename}`;
+    
+    const storageRef = ref(storage, safePath);
 
-    if (preFetched) {
-      uploadUrl = preFetched.uploadUrl;
-      url = preFetched.url;
-    } else {
-      console.log(`[Local Upload] Acquiring local upload link for ${filename}...`);
-      const response = await fetch('/api/local-presign', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ filename, contentType }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error(`[Local Upload] Presign error:`, errorData);
-        throw new Error(errorData.error || `Failed to acquire upload path: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      uploadUrl = data.uploadUrl;
-      url = data.url;
-    }
-
-    console.log(`[Local Upload] Initiating system transmission of blob...`);
+    console.log(`[Cloud Upload] Initiating system transmission...`);
 
     // 2. Convert base64 to binary blob
     let blob: Blob;
@@ -57,49 +41,43 @@ export async function uploadToLocal(
     } catch (err: any) {
       throw new Error(`Data URI binary mapping error: ${err.message}`);
     }
-    console.log(`[Local Upload] Payload footprint: ${blob.size} bytes`);
+    console.log(`[Cloud Upload] Payload footprint: ${blob.size} bytes`);
 
-    // 2.5 Check size threshold (50KB)
+    // 2.5 Check size threshold (50KB) - keep inline if very small to save bandwidth/requests
     if (blob.size <= 50 * 1024) {
-      console.log(`[Local Upload] Size is ${blob.size} bytes (<= 50KB), keeping as base64 inline for Firebase.`);
-      // If we pre-fetched an endpoint but didn't need it, we just ignore it.
+      console.log(`[Cloud Upload] Size is ${blob.size} bytes (<= 50KB), keeping as base64 inline.`);
       return base64Data;
     }
 
-    // 3. Perform binary PUT uploading via XMLHttpRequest for real-time progress callbacks
+    // 3. Perform binary upload to Firebase Storage with resumable task
     return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', uploadUrl);
-      xhr.setRequestHeader('Content-Type', contentType);
+      const uploadTask = uploadBytesResumable(storageRef, blob, { contentType });
 
-      if (onProgress) {
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const percentComplete = (event.loaded / event.total) * 100;
-            onProgress(percentComplete);
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          if (onProgress) {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            onProgress(progress);
           }
-        };
-      }
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          console.log(`[Local Upload] Transmission success: ${url}`);
-          resolve(url);
-        } else {
-          console.error(`[Local Upload] Backend reject:`, xhr.status, xhr.statusText, xhr.responseText);
-          reject(new Error(`Local destination rejected stream: ${xhr.statusText} - ${xhr.responseText}`));
+        },
+        (error) => {
+           console.error(`[Cloud Upload] Backend reject:`, error);
+           reject(new Error(`Firebase destination rejected stream: ${error.message}`));
+        },
+        async () => {
+          try {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+             console.log(`[Cloud Upload] Transmission success: ${downloadURL}`);
+             resolve(downloadURL);
+          } catch (err: any) {
+            reject(new Error(`Failed to get download URL: ${err.message}`));
+          }
         }
-      };
-
-      xhr.onerror = () => {
-        console.error(`[Local Upload] Communication network exception`);
-        reject(new Error('Persistent local network transmission interrupted'));
-      };
-
-      xhr.send(blob);
+      );
     });
   } catch (error) {
-    console.error('[Local Upload Routine Error]:', error);
+    console.error('[Cloud Upload Routine Error]:', error);
     throw error;
   }
 }
