@@ -25,6 +25,7 @@ export const SeriesManagement: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [seriesToDelete, setSeriesToDelete] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadingField, setUploadingField] = useState<'coverImage' | 'backgroundImage' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDraggingCover, setIsDraggingCover] = useState(false);
   const [isDraggingBg, setIsDraggingBg] = useState(false);
@@ -87,6 +88,7 @@ export const SeriesManagement: React.FC = () => {
     if (!file) return;
 
     setIsUploading(true);
+    setUploadingField(field);
     setUploadProgress(0);
     
     try {
@@ -123,6 +125,7 @@ export const SeriesManagement: React.FC = () => {
       alert(`Upload failed: ${error.message}`);
     } finally {
       setIsUploading(false);
+      setUploadingField(null);
       setTimeout(() => setUploadProgress(0), 1000);
     }
   };
@@ -645,7 +648,7 @@ export const SeriesManagement: React.FC = () => {
                           onChange={(e) => handleFileUpload(e, 'coverImage')}
                         />
                         <label htmlFor="cover-upload-input" className="cursor-pointer flex flex-col items-center justify-center gap-2">
-                          {isUploading ? (
+                          {isUploading && uploadingField === 'coverImage' ? (
                             <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
                           ) : (
                             <Upload className="w-8 h-8 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
@@ -707,7 +710,7 @@ export const SeriesManagement: React.FC = () => {
                           onChange={(e) => handleFileUpload(e, 'backgroundImage')}
                         />
                         <label htmlFor="bg-upload-input" className="cursor-pointer flex flex-col items-center justify-center gap-2">
-                          {isUploading ? (
+                          {isUploading && uploadingField === 'backgroundImage' ? (
                             <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
                           ) : (
                             <Upload className="w-8 h-8 text-zinc-400 group-hover:text-emerald-500 transition-colors" />

@@ -12,17 +12,47 @@ export async function uploadToLocal(
   preFetched?: { uploadUrl: string, url: string }
 ): Promise<string | null> {
   try {
-    console.log(`[Cloud Upload] Acquiring cloud reference for ${filename}...`);
+    console.log(`[Local Upload] Attempting local direct backend upload for ${filename}...`);
     
     // Clean filename to be safe
     const cleanFilename = filename.replace(/[^a-zA-Z0-9./-_]/g, '_');
-    const safePath = `uploads/${Date.now()}-${cleanFilename}`;
     
+    // 1. Try uploading to our local backend API route /api/upload first (fast, reliable, and CORS-free)
+    try {
+      if (onProgress) onProgress(20);
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          base64Data,
+          filename: cleanFilename,
+          contentType,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.url) {
+          console.log(`[Local Upload] Successful local upload:`, result.url);
+          if (onProgress) onProgress(100);
+          return result.url;
+        }
+      }
+      console.warn(`[Local Upload] Backend endpoint failed to return a URL, falling back to Firebase Storage.`);
+    } catch (apiErr) {
+      console.error(`[Local Upload] Backend API connection error, falling back to Firebase Storage:`, apiErr);
+    }
+
+    // 2. Fallback to Firebase Storage if the local API is unavailable
+    console.log(`[Cloud Upload] Acquiring cloud reference for ${filename}...`);
+    const safePath = `uploads/${Date.now()}-${cleanFilename}`;
     const storageRef = ref(storage, safePath);
 
     console.log(`[Cloud Upload] Initiating system transmission...`);
 
-    // 2. Convert base64 to binary blob
+    // Convert base64 to binary blob
     let blob: Blob;
     try {
       if (base64Data.startsWith('data:')) {
@@ -43,13 +73,13 @@ export async function uploadToLocal(
     }
     console.log(`[Cloud Upload] Payload footprint: ${blob.size} bytes`);
 
-    // 2.5 Check size threshold (50KB) - keep inline if very small to save bandwidth/requests
+    // Check size threshold (50KB) - keep inline if very small to save bandwidth/requests
     if (blob.size <= 50 * 1024) {
       console.log(`[Cloud Upload] Size is ${blob.size} bytes (<= 50KB), keeping as base64 inline.`);
       return base64Data;
     }
 
-    // 3. Perform binary upload to Firebase Storage with resumable task
+    // Perform binary upload to Firebase Storage with resumable task
     return new Promise((resolve, reject) => {
       const uploadTask = uploadBytesResumable(storageRef, blob, { contentType });
 
