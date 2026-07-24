@@ -4,7 +4,7 @@ import { UserProfile } from '../types';
 import { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
-  user: User | null;
+  user: any;
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
@@ -24,7 +24,7 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -71,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             username: userData.user.user_metadata.full_name || userData.user.email?.split('@')[0] || 'User',
             email: userData.user.email || '',
             bio: 'Reading is life.',
-            profilePicture: userData.user.user_metadata.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.user.id}`,
+            profilePicture: (userData.user.user_metadata as any).avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.user.id}`,
             role: (userData.user.email === 'aynmluona@gmail.com' || userData.user.email === 'genz-manga@gmail.com') ? 'admin' : 'user',
             favorites: [],
             history: [],

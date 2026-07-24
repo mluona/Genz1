@@ -580,19 +580,6 @@ export const Profile: React.FC = () => {
 
                         {/* Filters & Sorters */}
                         <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto no-scrollbar">
-                          {/* Types Selector */}
-                          <div className="flex bg-zinc-950 p-1 rounded-xl border border-white/5 text-[10px] font-bold">
-                            {['all', 'Manga', 'Manhwa', 'Novel'].map(type => (
-                              <button 
-                                key={type}
-                                onClick={() => setFavoriteType(type)}
-                                className={`px-3 py-1.5 rounded-lg whitespace-nowrap ${favoriteType === type ? 'bg-emerald-500 text-black font-black' : 'text-zinc-400 hover:text-white'}`}
-                              >
-                                {type === 'all' ? 'الكل' : type === 'Manga' ? 'مانجا' : type === 'Manhwa' ? 'مانهوا' : 'رواية'}
-                              </button>
-                            ))}
-                          </div>
-
                           {/* Sorter Selector */}
                           <select 
                             value={favoriteSort} 
@@ -619,8 +606,8 @@ export const Profile: React.FC = () => {
                         <div className="col-span-full py-16 bg-zinc-900/20 border border-dashed border-white/5 rounded-3xl text-center space-y-4">
                           <Heart className="w-12 h-12 text-zinc-600 mx-auto" />
                           <div className="space-y-1">
-                            <h4 className="font-bold text-zinc-400">لا توجد أعمال في المفضلة</h4>
-                            <p className="text-zinc-600 text-xs max-w-xs mx-auto">عند قيامك بحفظ المانجا أو الروايات المفضلة لديك، ستظهر مجدداً هنا للوصول السريع إليها.</p>
+                            <h4 className="font-bold text-zinc-400">لا توجد روايات في المفضلة</h4>
+                            <p className="text-zinc-600 text-xs max-w-xs mx-auto">عند قيامك بحفظ رواياتك المفضلة لديك، ستظهر هنا للوصول السريع إليها.</p>
                           </div>
                         </div>
                       ) : (
@@ -665,7 +652,7 @@ export const Profile: React.FC = () => {
                                 
                                 <div className="flex items-center justify-between">
                                   <span className="text-[9px] font-black tracking-widest text-emerald-400 uppercase">
-                                    {series.type === 'Manga' ? 'مانجا' : series.type === 'Manhwa' ? 'مانهوا' : 'رواية'}
+                                    رواية
                                   </span>
                                   {series.rating && (
                                     <div className="flex items-center gap-1">

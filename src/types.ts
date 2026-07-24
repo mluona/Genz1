@@ -1,7 +1,7 @@
 // Supabase uses ISO strings for timestamps
 export type Timestamp = string;
 
-export type SeriesType = 'Manga' | 'Manhwa' | 'Novel';
+export type SeriesType = 'Novel';
 export type SeriesStatus = 'Ongoing' | 'Completed' | 'Hiatus' | 'Dropped';
 export type UserRole = 'user' | 'admin' | 'translator' | 'proofreader' | 'typesetter' | 'editor';
 

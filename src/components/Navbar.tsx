@@ -86,9 +86,8 @@ export const Navbar: React.FC = () => {
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-8">
-            <Link to="/manga" className="text-[11px] font-black text-zinc-400 hover:text-emerald-500 transition-all uppercase tracking-widest">مانجا</Link>
-            <Link to="/manhwa" className="text-[11px] font-black text-zinc-400 hover:text-emerald-500 transition-all uppercase tracking-widest">مانهوا</Link>
-            <Link to="/novels" className="text-[11px] font-black text-zinc-400 hover:text-emerald-500 transition-all uppercase tracking-widest">روايات</Link>
+            <Link to="/" className="text-[11px] font-black text-zinc-400 hover:text-emerald-500 transition-all uppercase tracking-widest">الرئيسية</Link>
+            <Link to="/novels" className="text-[11px] font-black text-zinc-400 hover:text-emerald-500 transition-all uppercase tracking-widest">الروايات</Link>
           </div>
 
           {/* Search & User */}
@@ -179,12 +178,11 @@ export const Navbar: React.FC = () => {
               </form>
 
               <div className="grid grid-cols-2 gap-3">
-                <Link to="/manga" onClick={() => setIsMenuOpen(false)} className="flex items-center justify-center py-3 bg-zinc-900 rounded-xl text-sm font-bold">مانجا</Link>
-                <Link to="/manhwa" onClick={() => setIsMenuOpen(false)} className="flex items-center justify-center py-3 bg-zinc-900 rounded-xl text-sm font-bold">مانهوا</Link>
-                <Link to="/novels" onClick={() => setIsMenuOpen(false)} className="flex items-center justify-center py-3 bg-zinc-900 rounded-xl text-sm font-bold">روايات</Link>
+                <Link to="/" onClick={() => setIsMenuOpen(false)} className="flex items-center justify-center py-3 bg-zinc-900 rounded-xl text-sm font-bold">الرئيسية</Link>
+                <Link to="/novels" onClick={() => setIsMenuOpen(false)} className="flex items-center justify-center py-3 bg-zinc-900 rounded-xl text-sm font-bold">الروايات</Link>
                 <button 
                   onClick={() => { toggleTheme(); setIsMenuOpen(false); }} 
-                  className="flex items-center justify-center gap-2 py-3 bg-zinc-900 rounded-xl text-sm font-bold"
+                  className="col-span-2 flex items-center justify-center gap-2 py-3 bg-zinc-900 rounded-xl text-sm font-bold"
                 >
                   {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                   {theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}

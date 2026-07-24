@@ -21,7 +21,6 @@ export const Library: React.FC = () => {
   const [seriesList, setSeriesList] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedType, setSelectedType] = useState<SeriesType | 'All'>('All');
   const [selectedGenre, setSelectedGenre] = useState<string | 'All'>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
@@ -57,9 +56,8 @@ export const Library: React.FC = () => {
   const filteredSeries = seriesList.filter(series => {
     const matchesSearch = series.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          series.author?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = selectedType === 'All' || series.type === selectedType;
     const matchesGenre = selectedGenre === 'All' || series.genres?.includes(selectedGenre);
-    return matchesSearch && matchesType && matchesGenre;
+    return matchesSearch && matchesGenre;
   });
 
   return (
@@ -103,23 +101,6 @@ export const Library: React.FC = () => {
 
         {/* Filters */}
         <div className="flex flex-col gap-6">
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'All', label: 'الكل' },
-              { id: 'Manga', label: 'مانجا' },
-              { id: 'Manhwa', label: 'مانهوا' },
-              { id: 'Novel', label: 'روايات' }
-            ].map((type) => (
-              <button
-                key={type.id}
-                onClick={() => setSelectedType(type.id as any)}
-                className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${selectedType === type.id ? 'bg-emerald-500 text-black' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'}`}
-              >
-                {type.label}
-              </button>
-            ))}
-          </div>
-
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedGenre('All')}
@@ -175,7 +156,7 @@ export const Library: React.FC = () => {
             <h3 className="text-xl font-black uppercase tracking-tight">لم يتم العثور على نتائج</h3>
             <p className="text-zinc-500 max-w-xs mx-auto">حاول تعديل الفلاتر أو عبارة البحث للعثور على ما تبحث عنه.</p>
             <button 
-              onClick={() => { setSearchTerm(''); setSelectedType('All'); setSelectedGenre('All'); }}
+              onClick={() => { setSearchTerm(''); setSelectedGenre('All'); }}
               className="text-emerald-500 font-black uppercase tracking-widest text-[11px] hover:underline"
             >
               مسح جميع الفلاتر

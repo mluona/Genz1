@@ -6,7 +6,7 @@ export const Footer: React.FC = () => {
   const currentYear = new Date().getFullYear();
 
   const handleShare = async () => {
-    const shareText = "شاهد افضل مانجا و الروايات على";
+    const shareText = "اقرأ أفضل الروايات على";
     const shareUrl = "https://genzmanhw.vercel.app/";
 
     if (navigator.share) {
@@ -26,9 +26,8 @@ export const Footer: React.FC = () => {
   };
 
   const copyToClipboard = () => {
-    const text = "شاهد افضل مانجا و الروايات على https://genzmanhw.vercel.app/";
+    const text = "اقرأ أفضل الروايات على https://genzmanhw.vercel.app/";
     navigator.clipboard.writeText(text);
-    alert("تم نسخ رابط المشاركة بنجاح!");
   };
 
   return (
@@ -71,13 +70,13 @@ export const Footer: React.FC = () => {
                 <Link to="/" className="hover:text-emerald-500 transition-colors">الرئيسية</Link>
               </li>
               <li>
-                <Link to="/manga" className="hover:text-emerald-500 transition-colors">أقسام المانجا</Link>
+                <Link to="/novels?status=Ongoing" className="hover:text-emerald-500 transition-colors">روايات مستمرة</Link>
               </li>
               <li>
-                <Link to="/manhwa" className="hover:text-emerald-500 transition-colors">مكتبة المانهوا</Link>
+                <Link to="/novels?status=Completed" className="hover:text-emerald-500 transition-colors">روايات مكتملة</Link>
               </li>
               <li>
-                <Link to="/novels" className="hover:text-emerald-500 transition-colors">أجدد الروايات</Link>
+                <Link to="/novels" className="hover:text-emerald-500 transition-colors">تصفح الروايات</Link>
               </li>
             </ul>
           </div>
@@ -89,7 +88,7 @@ export const Footer: React.FC = () => {
             <span>جميع الحقوق محفوظة © {currentYear} موقع <span className="text-white font-black">GENZ</span>.</span>
             <span>بني بكل</span>
             <Heart className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500/10 animate-pulse mx-0.5" />
-            <span>لعشاق القصص والروايات المصورة.</span>
+            <span>لعشاق الروايات والقصص الأدبية المميزة.</span>
           </div>
         </div>
       </div>

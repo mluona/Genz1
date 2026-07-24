@@ -109,7 +109,7 @@ class SupabaseQueryBuilder {
         const snapshot = await getDocs(q);
         const resultData: any[] = [];
         snapshot.forEach(doc => {
-          resultData.push({ id: doc.id, ...doc.data() });
+          resultData.push({ id: doc.id, ...(doc.data() as any) });
         });
 
         if (this.isSingle) {

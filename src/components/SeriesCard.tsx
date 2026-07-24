@@ -46,16 +46,13 @@ export const SeriesCard: React.FC<Props> = ({ series, compact = false }) => {
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         
         {/* Badges */}
-        <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
-          <span className={`px-2 py-1 text-[10px] font-black text-white rounded-md uppercase tracking-tighter ${series.type === 'Novel' ? 'bg-blue-500' : 'bg-emerald-500 text-black'}`}>
-            {series.type === 'Novel' ? 'رواية' : series.type === 'Manga' ? 'مانجا' : series.type === 'Manhwa' ? 'مانهوا' : series.type === 'Manhua' ? 'مانها' : series.type}
-          </span>
-          {series.status === 'Ongoing' && (
+        {series.status === 'Ongoing' && (
+          <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
             <span className="px-2 py-1 bg-white text-[10px] font-black text-black rounded-md uppercase tracking-tighter">
               جديد
             </span>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex-row-reverse">
           <div className="flex items-center gap-1 text-xs font-bold flex-row-reverse">

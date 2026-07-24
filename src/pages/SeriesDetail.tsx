@@ -71,7 +71,7 @@ export const SeriesDetail: React.FC = () => {
   };
 
   const handleShare = async () => {
-    const shareText = "شاهد افضل مانجا و الروايات على";
+    const shareText = "شاهد أفضل الروايات على";
     const shareUrl = "https://genzmanhw.vercel.app/";
     if (navigator.share) {
       try {
@@ -91,7 +91,7 @@ export const SeriesDetail: React.FC = () => {
   };
 
   const copyToClipboard = async () => {
-    const text = "شاهد افضل مانجا و الروايات على https://genzmanhw.vercel.app/";
+    const text = "شاهد أفضل الروايات على https://genzmanhw.vercel.app/";
     try {
       if (document.hasFocus()) {
         await navigator.clipboard.writeText(text);
@@ -311,7 +311,7 @@ export const SeriesDetail: React.FC = () => {
               >
                 <div className="flex flex-wrap justify-center md:justify-start gap-2">
                   <span className="px-3 py-1 bg-emerald-500 text-black text-[10px] font-black rounded-full uppercase tracking-widest">
-                    {series.type === 'Novel' ? 'رواية' : series.type === 'Manga' ? 'مانجا' : series.type === 'Manhwa' ? 'مانهوا' : series.type}
+                    رواية
                   </span>
                   <span className={`px-3 py-1 text-[10px] font-black rounded-full uppercase tracking-widest border ${
                     series.status === 'Ongoing' ? 'border-emerald-500/50 text-emerald-500' : 'border-zinc-500/50 text-zinc-500'
@@ -474,7 +474,7 @@ export const SeriesDetail: React.FC = () => {
               <div className="flex justify-between items-center">
                 <span className="text-sm text-zinc-500">النوع</span>
                 <span className="px-2 py-1 bg-zinc-950 rounded-lg text-[10px] font-black uppercase tracking-widest border border-white/5">
-                  {series.type === 'Novel' ? 'رواية' : series.type === 'Manga' ? 'مانجا' : series.type === 'Manhwa' ? 'مانهوا' : series.type}
+                  رواية
                 </span>
               </div>
             </div>

@@ -26,6 +26,8 @@ export const SeriesManagement: React.FC = () => {
   const [seriesToDelete, setSeriesToDelete] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDraggingCover, setIsDraggingCover] = useState(false);
+  const [isDraggingBg, setIsDraggingBg] = useState(false);
   
   // Smart Import States
   const [isSmartImportModalOpen, setIsSmartImportModalOpen] = useState(false);
@@ -43,7 +45,7 @@ export const SeriesManagement: React.FC = () => {
     coverImage: '',
     backgroundImage: '',
     status: 'Ongoing' as SeriesStatus,
-    type: 'Manga' as SeriesType,
+    type: 'Novel' as SeriesType,
     genres: [] as string[],
     tags: [] as string[],
     author: '',
@@ -333,7 +335,7 @@ export const SeriesManagement: React.FC = () => {
       setIsSmartImporting(false);
       setSmartImportFile(null);
       setFormData({
-        title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
+        title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Novel', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
       });
     }
   };
@@ -376,7 +378,7 @@ export const SeriesManagement: React.FC = () => {
       setIsModalOpen(false);
       setEditingSeries(null);
       setFormData({
-        title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
+        title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Novel', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
       });
     } catch (error: any) {
       console.error("Error saving series:", error);
@@ -416,19 +418,6 @@ export const SeriesManagement: React.FC = () => {
         </div>
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
           <div className="relative w-full sm:w-auto">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
-            <select 
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="w-full sm:w-auto bg-white border border-zinc-200 rounded-2xl py-2.5 pl-10 pr-8 text-sm outline-none appearance-none focus:ring-2 focus:ring-emerald-500/20"
-            >
-              <option value="all">All Types</option>
-              <option value="Manga">Manga</option>
-              <option value="Manhwa">Manhwa</option>
-              <option value="Novel">Novel</option>
-            </select>
-          </div>
-          <div className="relative w-full sm:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input 
               type="text" 
@@ -442,7 +431,7 @@ export const SeriesManagement: React.FC = () => {
             onClick={() => { 
               setEditingSeries(null); 
               setFormData({
-                title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
+                title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Novel', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
               });
               setIsSmartImportMode(false);
               setSmartImportFile(null);
@@ -456,7 +445,7 @@ export const SeriesManagement: React.FC = () => {
             onClick={() => { 
               setEditingSeries(null); 
               setFormData({
-                title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Manga', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
+                title: '', description: '', coverImage: '', backgroundImage: '', status: 'Ongoing', type: 'Novel', genres: [], tags: [], author: '', artist: '', releaseYear: new Date().getFullYear(), slug: ''
               });
               setIsSmartImportMode(true);
               setSmartImportFile(null);
@@ -471,11 +460,10 @@ export const SeriesManagement: React.FC = () => {
 
       {/* Series Table */}
       <div className="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[800px]">
+        <table className="w-full text-left border-collapse min-w-[700px]">
           <thead>
             <tr className="bg-zinc-50 border-b border-zinc-200">
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">Series</th>
-              <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">Type</th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">Status</th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">Views</th>
               <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">Actions</th>
@@ -492,11 +480,6 @@ export const SeriesManagement: React.FC = () => {
                       <p className="text-xs text-zinc-500">{series.author}</p>
                     </div>
                   </div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className="px-3 py-1 bg-zinc-100 text-zinc-600 rounded-full text-[10px] font-black uppercase tracking-widest">
-                    {series.type}
-                  </span>
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${series.status === 'Ongoing' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'}`}>
@@ -581,32 +564,18 @@ export const SeriesManagement: React.FC = () => {
                       className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-emerald-500/20 outline-none"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Type</label>
-                      <select 
-                        value={formData.type}
-                        onChange={e => setFormData({...formData, type: e.target.value as SeriesType})}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 outline-none"
-                      >
-                        <option value="Manga">Manga</option>
-                        <option value="Manhwa">Manhwa</option>
-                        <option value="Novel">Novel</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Status</label>
-                      <select 
-                        value={formData.status}
-                        onChange={e => setFormData({...formData, status: e.target.value as SeriesStatus})}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 outline-none"
-                      >
-                        <option value="Ongoing">Ongoing</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Hiatus">Hiatus</option>
-                        <option value="Dropped">Dropped</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Status</label>
+                    <select 
+                      value={formData.status}
+                      onChange={e => setFormData({...formData, status: e.target.value as SeriesStatus})}
+                      className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 outline-none"
+                    >
+                      <option value="Ongoing">Ongoing</option>
+                      <option value="Completed">Completed</option>
+                      <option value="Hiatus">Hiatus</option>
+                      <option value="Dropped">Dropped</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Description</label>
@@ -642,31 +611,51 @@ export const SeriesManagement: React.FC = () => {
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Cover Image</label>
                     <div className="flex flex-col gap-4">
-                      <div className="flex gap-4">
-                        <input
-                          type="text"
-                          value={formData.coverImage}
-                          onChange={(e) => setFormData({...formData, coverImage: e.target.value})}
-                          placeholder="رابط الصورة (URL) أو قم بالرفع"
-                          className="flex-1 bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                      <input
+                        type="text"
+                        value={formData.coverImage}
+                        onChange={(e) => setFormData({...formData, coverImage: e.target.value})}
+                        placeholder="رابط الصورة (URL) أو اسحب الملف هنا"
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                      />
+                      <div 
+                        onDragOver={(e) => { e.preventDefault(); setIsDraggingCover(true); }}
+                        onDragLeave={(e) => { e.preventDefault(); setIsDraggingCover(false); }}
+                        onDrop={async (e) => { 
+                          e.preventDefault(); 
+                          setIsDraggingCover(false); 
+                          const file = e.dataTransfer.files?.[0]; 
+                          if (file && file.type.startsWith('image/')) {
+                            const simulatedEvent = { target: { files: [file] } } as any;
+                            handleFileUpload(simulatedEvent, 'coverImage');
+                          }
+                        }}
+                        className={`relative border-2 border-dashed rounded-3xl p-6 transition-all duration-300 text-center ${
+                          isDraggingCover 
+                            ? 'border-emerald-500 bg-emerald-50/20' 
+                            : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100/50 hover:border-zinc-300'
+                        }`}
+                      >
+                        <input 
+                          type="file" 
+                          id="cover-upload-input"
+                          className="hidden" 
+                          accept="image/*"
+                          disabled={isUploading}
+                          onChange={(e) => handleFileUpload(e, 'coverImage')}
                         />
-                        <label className="p-3 bg-zinc-100 rounded-2xl text-zinc-500 hover:bg-zinc-200 cursor-pointer transition-colors relative flex items-center justify-center min-w-[3rem]">
-                          {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                          <input 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/*"
-                            disabled={isUploading}
-                            onChange={(e) => handleFileUpload(e, 'coverImage')}
-                          />
+                        <label htmlFor="cover-upload-input" className="cursor-pointer flex flex-col items-center justify-center gap-2">
+                          {isUploading ? (
+                            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+                          ) : (
+                            <Upload className="w-8 h-8 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
+                          )}
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-zinc-700">اسحب صورة الغلاف وأفلتها هنا، أو اضغط للتصفح</p>
+                            <p className="text-[10px] text-zinc-400 font-medium">JPEG, PNG, WEBP (بحد أقصى 5 ميجابايت)</p>
+                          </div>
                         </label>
                       </div>
-                      {isUploading && (
-                        <div className="h-1 bg-zinc-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 animate-pulse" style={{ width: '100%' }} />
-                        </div>
-                      )}
-                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Upload a file from your device</p>
                     </div>
                     {formData.coverImage && (
                       <div className="relative mt-4 w-32 h-44 group">
@@ -674,7 +663,7 @@ export const SeriesManagement: React.FC = () => {
                         <button 
                           type="button"
                           onClick={() => setFormData({...formData, coverImage: ''})}
-                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -684,26 +673,51 @@ export const SeriesManagement: React.FC = () => {
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Background Image (Optional)</label>
                     <div className="flex flex-col gap-4">
-                      <div className="flex gap-4">
-                        <input
-                          type="text"
-                          value={formData.backgroundImage}
-                          onChange={(e) => setFormData({...formData, backgroundImage: e.target.value})}
-                          placeholder="رابط خلفية العمل (اختياري) أو قم بالرفع"
-                          className="flex-1 bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                      <input
+                        type="text"
+                        value={formData.backgroundImage}
+                        onChange={(e) => setFormData({...formData, backgroundImage: e.target.value})}
+                        placeholder="رابط خلفية العمل (اختياري) أو اسحب الملف هنا"
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+                      />
+                      <div 
+                        onDragOver={(e) => { e.preventDefault(); setIsDraggingBg(true); }}
+                        onDragLeave={(e) => { e.preventDefault(); setIsDraggingBg(false); }}
+                        onDrop={async (e) => { 
+                          e.preventDefault(); 
+                          setIsDraggingBg(false); 
+                          const file = e.dataTransfer.files?.[0]; 
+                          if (file && file.type.startsWith('image/')) {
+                            const simulatedEvent = { target: { files: [file] } } as any;
+                            handleFileUpload(simulatedEvent, 'backgroundImage');
+                          }
+                        }}
+                        className={`relative border-2 border-dashed rounded-3xl p-6 transition-all duration-300 text-center ${
+                          isDraggingBg 
+                            ? 'border-emerald-500 bg-emerald-50/20' 
+                            : 'border-zinc-200 bg-zinc-50 hover:bg-zinc-100/50 hover:border-zinc-300'
+                        }`}
+                      >
+                        <input 
+                          type="file" 
+                          id="bg-upload-input"
+                          className="hidden" 
+                          accept="image/*"
+                          disabled={isUploading}
+                          onChange={(e) => handleFileUpload(e, 'backgroundImage')}
                         />
-                        <label className="p-3 bg-zinc-100 rounded-2xl text-zinc-500 hover:bg-zinc-200 cursor-pointer transition-colors relative flex items-center justify-center min-w-[3rem]">
-                          {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                          <input 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/*"
-                            disabled={isUploading}
-                            onChange={(e) => handleFileUpload(e, 'backgroundImage')}
-                          />
+                        <label htmlFor="bg-upload-input" className="cursor-pointer flex flex-col items-center justify-center gap-2">
+                          {isUploading ? (
+                            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+                          ) : (
+                            <Upload className="w-8 h-8 text-zinc-400 group-hover:text-emerald-500 transition-colors" />
+                          )}
+                          <div className="space-y-1">
+                            <p className="text-xs font-bold text-zinc-700">اسحب صورة الخلفية وأفلتها هنا، أو اضغط للتصفح</p>
+                            <p className="text-[10px] text-zinc-400 font-medium">JPEG, PNG, WEBP (بحد أقصى 5 ميجابايت)</p>
+                          </div>
                         </label>
                       </div>
-                      <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">Used for the series detail page header</p>
                     </div>
                     {formData.backgroundImage && (
                       <div className="relative mt-4 w-full h-32 group">
@@ -711,7 +725,7 @@ export const SeriesManagement: React.FC = () => {
                         <button 
                           type="button"
                           onClick={() => setFormData({...formData, backgroundImage: ''})}
-                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                         >
                           <X className="w-4 h-4" />
                         </button>

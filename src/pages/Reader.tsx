@@ -186,10 +186,13 @@ export const Reader: React.FC = () => {
     const saved = localStorage.getItem('readerViewMode');
     return (saved as 'vertical' | 'horizontal') || 'horizontal';
   });
-  const [fontSize, setFontSize] = useState(() => Number(localStorage.getItem('readerFontSize')) || 18);
+  const [fontSize, setFontSize] = useState(() => Number(localStorage.getItem('readerFontSize')) || 20);
   const [lineHeight, setLineHeight] = useState(() => Number(localStorage.getItem('readerLineHeight')) || 1.8);
-  const [fontFamily, setFontFamily] = useState<'serif' | 'sans' | 'mono'>(() => (localStorage.getItem('readerFontFamily') as 'serif' | 'sans' | 'mono') || 'serif');
+  const [fontFamily, setFontFamily] = useState<'serif' | 'sans' | 'display' | 'mono'>(() => (localStorage.getItem('readerFontFamily') as any) || 'serif');
   const [novelTheme, setNovelTheme] = useState<'dark' | 'light' | 'sepia'>(() => (localStorage.getItem('readerNovelTheme') as 'dark' | 'light' | 'sepia') || 'dark');
+  const [textAlign, setTextAlign] = useState<'justify' | 'right' | 'center'>(() => (localStorage.getItem('readerTextAlign') as any) || 'justify');
+  const [paragraphSpacing, setParagraphSpacing] = useState<'sm' | 'md' | 'lg'>(() => (localStorage.getItem('readerParagraphSpacing') as any) || 'md');
+  const [readerLayout, setReaderLayout] = useState<'fullscreen' | 'book'>(() => (localStorage.getItem('readerLayout') as any) || 'book');
   
   useEffect(() => {
     localStorage.setItem('readerViewMode', viewMode);
@@ -197,7 +200,10 @@ export const Reader: React.FC = () => {
     localStorage.setItem('readerLineHeight', lineHeight.toString());
     localStorage.setItem('readerFontFamily', fontFamily);
     localStorage.setItem('readerNovelTheme', novelTheme);
-  }, [viewMode, fontSize, lineHeight, fontFamily, novelTheme]);
+    localStorage.setItem('readerTextAlign', textAlign);
+    localStorage.setItem('readerParagraphSpacing', paragraphSpacing);
+    localStorage.setItem('readerLayout', readerLayout);
+  }, [viewMode, fontSize, lineHeight, fontFamily, novelTheme, textAlign, paragraphSpacing, readerLayout]);
 
   const [currentPage, setCurrentPage] = useState(0);
   const [showControls, setShowControls] = useState(true);
@@ -618,6 +624,7 @@ export const Reader: React.FC = () => {
   const getFontFamilyClass = () => {
     switch (fontFamily) {
       case 'sans': return 'font-sans';
+      case 'display': return 'font-display';
       case 'mono': return 'font-mono';
       case 'serif': default: return 'font-serif';
     }
@@ -680,42 +687,85 @@ export const Reader: React.FC = () => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 10 }}
-                      className="fixed sm:absolute right-4 sm:right-0 top-20 sm:top-full mt-2 w-[calc(100vw-32px)] sm:w-72 bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl z-50 text-white"
+                      className="fixed sm:absolute right-4 sm:right-0 top-20 sm:top-full mt-2 w-[calc(100vw-32px)] sm:w-80 bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl z-50 text-white"
                       onClick={e => e.stopPropagation()}
                     >
-                      <div className="space-y-6 text-right">
+                      <div className="space-y-5 text-right custom-scrollbar max-h-[70vh] overflow-y-auto pr-1">
+                        <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">تخصيص القارئ</span>
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase">مظهر مريح للعين</span>
+                        </div>
+                        
+                        {/* 1. Theme */}
                         <div>
-                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 mb-3">المظهر</p>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400 mb-2">المظهر الخلفي</p>
                           <div className="flex gap-2">
-                            <button onClick={() => setNovelTheme('dark')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'dark' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>داكن</button>
-                            <button onClick={() => setNovelTheme('light')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'light' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>فاتح</button>
-                            <button onClick={() => setNovelTheme('sepia')} className={`flex-1 py-2 rounded-xl border text-xs ${novelTheme === 'sepia' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>كلاسيكي</button>
+                            <button onClick={() => setNovelTheme('dark')} className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${novelTheme === 'dark' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10 shadow-lg' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>داكن</button>
+                            <button onClick={() => setNovelTheme('light')} className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${novelTheme === 'light' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10 shadow-lg' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>فاتح</button>
+                            <button onClick={() => setNovelTheme('sepia')} className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${novelTheme === 'sepia' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10 shadow-lg' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>ورق قديم</button>
                           </div>
                         </div>
+
+                        {/* 2. Layout Style */}
                         <div>
-                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 mb-3">خط الكتابة</p>
-                          <div className="flex gap-2 font-sans">
-                            <button onClick={() => setFontFamily('serif')} className={`flex-1 py-2 rounded-xl border text-xs font-serif ${fontFamily === 'serif' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Serif</button>
-                            <button onClick={() => setFontFamily('sans')} className={`flex-1 py-2 rounded-xl border text-xs font-sans ${fontFamily === 'sans' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Sans</button>
-                            <button onClick={() => setFontFamily('mono')} className={`flex-1 py-2 rounded-xl border text-xs font-mono ${fontFamily === 'mono' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/10 text-zinc-400 hover:text-white'}`}>Mono</button>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400 mb-2">نوع التنسيق</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setReaderLayout('book')} className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${readerLayout === 'book' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>وضع الكتاب</button>
+                            <button onClick={() => setReaderLayout('fullscreen')} className={`flex-1 py-2 rounded-xl border text-xs font-bold transition-all ${readerLayout === 'fullscreen' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>شاشة كاملة</button>
                           </div>
                         </div>
+
+                        {/* 3. Font Family */}
                         <div>
-                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 mb-3">حجم الخط</p>
-                          <div className="flex items-center gap-4">
-                            <button onClick={() => setFontSize(Math.max(12, fontSize - 2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700 font-black">-</button>
-                            <span className="flex-1 text-center font-bold font-mono">{fontSize}px</span>
-                            <button onClick={() => setFontSize(Math.min(32, fontSize + 2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700 font-black">+</button>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400 mb-2">نوع خط النص</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button onClick={() => setFontFamily('serif')} className={`py-2 px-1 rounded-xl border text-[11px] font-serif transition-all ${fontFamily === 'serif' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>أميري (أنيق)</button>
+                            <button onClick={() => setFontFamily('sans')} className={`py-2 px-1 rounded-xl border text-[11px] font-sans transition-all ${fontFamily === 'sans' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>كايرو (سهل)</button>
+                            <button onClick={() => setFontFamily('display')} className={`py-2 px-1 rounded-xl border text-[11px] font-display transition-all ${fontFamily === 'display' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>هندسي</button>
+                            <button onClick={() => setFontFamily('mono')} className={`py-2 px-1 rounded-xl border text-[11px] font-mono transition-all ${fontFamily === 'mono' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>افتراضي</button>
                           </div>
                         </div>
+
+                        {/* 4. Font Size */}
                         <div>
-                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500 mb-3">تباعد الأسطر</p>
-                          <div className="flex items-center gap-4">
-                            <button onClick={() => setLineHeight(Math.max(1.2, lineHeight - 0.2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700 font-black">-</button>
-                            <span className="flex-1 text-center font-bold font-mono">{lineHeight.toFixed(1)}</span>
-                            <button onClick={() => setLineHeight(Math.min(2.5, lineHeight + 0.2))} className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center hover:bg-zinc-700 font-black">+</button>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400 mb-2">حجم خط القراءة</p>
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => setFontSize(Math.max(14, fontSize - 1))} className="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center font-bold text-lg border border-white/5 hover:border-white/10">-</button>
+                            <span className="flex-1 text-center font-bold font-mono text-sm bg-zinc-950/30 py-2 rounded-xl border border-white/5">{fontSize}px</span>
+                            <button onClick={() => setFontSize(Math.min(36, fontSize + 1))} className="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center font-bold text-lg border border-white/5 hover:border-white/10">+</button>
                           </div>
                         </div>
+
+                        {/* 5. Line Height */}
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400 mb-2">تباعد الأسطر</p>
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => setLineHeight(Math.max(1.4, lineHeight - 0.1))} className="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center font-bold text-lg border border-white/5 hover:border-white/10">-</button>
+                            <span className="flex-1 text-center font-bold font-mono text-sm bg-zinc-950/30 py-2 rounded-xl border border-white/5">{lineHeight.toFixed(1)}</span>
+                            <button onClick={() => setLineHeight(Math.min(3.0, lineHeight + 0.1))} className="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center font-bold text-lg border border-white/5 hover:border-white/10">+</button>
+                          </div>
+                        </div>
+
+                        {/* 6. Text Align */}
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400 mb-2">محاذاة النص</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setTextAlign('justify')} className={`flex-1 py-2 rounded-xl border text-[11px] font-bold transition-all ${textAlign === 'justify' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>ضبط كامل</button>
+                            <button onClick={() => setTextAlign('right')} className={`flex-1 py-2 rounded-xl border text-[11px] font-bold transition-all ${textAlign === 'right' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>يمين</button>
+                            <button onClick={() => setTextAlign('center')} className={`flex-1 py-2 rounded-xl border text-[11px] font-bold transition-all ${textAlign === 'center' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>توسيط</button>
+                          </div>
+                        </div>
+
+                        {/* 7. Paragraph Spacing */}
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-zinc-400 mb-2">تباعد الفقرات</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setParagraphSpacing('sm')} className={`flex-1 py-2 rounded-xl border text-[11px] font-bold transition-all ${paragraphSpacing === 'sm' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>صغير</button>
+                            <button onClick={() => setParagraphSpacing('md')} className={`flex-1 py-2 rounded-xl border text-[11px] font-bold transition-all ${paragraphSpacing === 'md' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>متوسط</button>
+                            <button onClick={() => setParagraphSpacing('lg')} className={`flex-1 py-2 rounded-xl border text-[11px] font-bold transition-all ${paragraphSpacing === 'lg' ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10' : 'border-white/5 text-zinc-400 hover:text-white bg-zinc-950/40'}`}>كبير</button>
+                          </div>
+                        </div>
+                        
                       </div>
                     </motion.div>
                   )}
@@ -810,13 +860,45 @@ export const Reader: React.FC = () => {
             </button>
           </div>
         ) : series.type === 'Novel' ? (
-          <div className="max-w-3xl w-full px-6 py-12 space-y-8">
-            <div 
-              className={`${getFontFamilyClass()} leading-relaxed whitespace-pre-wrap`}
-              style={{ fontSize: `${fontSize}px`, lineHeight: lineHeight }}
-              dir="auto"
-            >
-              {chapter.content.join('\n\n')}
+          <div className="max-w-3xl w-full px-4 sm:px-6 py-6 sm:py-12 space-y-8">
+            <div className={`transition-all duration-300 ${
+              readerLayout === 'book' 
+                ? novelTheme === 'sepia'
+                  ? 'bg-[#faf3e3] border border-[#e8dcc4] shadow-xl rounded-[2rem] p-6 sm:p-12 text-[#4a3b2c]'
+                  : novelTheme === 'light'
+                  ? 'bg-white border border-zinc-200 shadow-xl rounded-[2rem] p-6 sm:p-12 text-zinc-950'
+                  : 'bg-zinc-900/60 border border-white/5 shadow-xl rounded-[2rem] p-6 sm:p-12 text-zinc-100'
+                : ''
+            }`}>
+              {/* Novel Header inside book page */}
+              {readerLayout === 'book' && (
+                <div className="mb-10 pb-6 border-b border-current/10 text-center">
+                  <h1 className="text-xl sm:text-2xl font-black mb-3" dir="auto">{chapter.title || `الفصل ${chapter.chapterNumber}`}</h1>
+                  <p className="text-xs opacity-60">الفصل {chapter.chapterNumber}</p>
+                </div>
+              )}
+
+              <div 
+                className={`${getFontFamilyClass()} transition-all`}
+                style={{ 
+                  fontSize: `${fontSize}px`, 
+                  lineHeight: lineHeight,
+                  textAlign: textAlign === 'justify' ? 'justify' : textAlign
+                }}
+                dir="auto"
+              >
+                {(() => {
+                  const rawContent = chapter.content.join('\n\n');
+                  const paragraphs = rawContent.split(/\n+/).map(p => p.trim()).filter(p => p.length > 0);
+                  const spacingClass = paragraphSpacing === 'sm' ? 'mb-4' : paragraphSpacing === 'lg' ? 'mb-9' : 'mb-6';
+                  
+                  return paragraphs.map((p, index) => (
+                    <p key={index} className={`${spacingClass} last:mb-0 leading-relaxed text-justify-inter`}>
+                      {p}
+                    </p>
+                  ));
+                })()}
+              </div>
             </div>
             
             {/* End of Chapter Actions */}

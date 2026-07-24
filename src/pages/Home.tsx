@@ -34,7 +34,7 @@ export const Home: React.FC = () => {
   const [showShareToast, setShowShareToast] = useState(false);
 
   const handleShare = async () => {
-    const shareText = "شاهد افضل مانجا و الروايات على";
+    const shareText = "شاهد أفضل الروايات على";
     const shareUrl = "https://genzmanhw.vercel.app/";
     if (navigator.share) {
       try {
@@ -53,7 +53,7 @@ export const Home: React.FC = () => {
   };
 
   const copyToClipboard = async () => {
-    const text = "شاهد افضل مانجا و الروايات على https://genzmanhw.vercel.app/";
+    const text = "شاهد أفضل الروايات على https://genzmanhw.vercel.app/";
     try {
       if (document.hasFocus()) {
         await navigator.clipboard.writeText(text);
@@ -212,7 +212,7 @@ export const Home: React.FC = () => {
               <div className="w-[3px] h-11 bg-[#5865F2] rounded-full" />
               <div className="text-right">
                 <h3 className="text-[15px] font-black text-white">انضم لمجتمعنا</h3>
-                <p className="text-zinc-400 text-[10px] font-bold mt-1">تواصل مع عشاق المانجا</p>
+                <p className="text-zinc-400 text-[10px] font-bold mt-1">تواصل مع عشاق الروايات</p>
               </div>
             </div>
             <a 
