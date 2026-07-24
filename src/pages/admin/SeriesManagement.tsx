@@ -614,13 +614,6 @@ export const SeriesManagement: React.FC = () => {
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Cover Image</label>
                     <div className="flex flex-col gap-4">
-                      <input
-                        type="text"
-                        value={formData.coverImage}
-                        onChange={(e) => setFormData({...formData, coverImage: e.target.value})}
-                        placeholder="رابط الصورة (URL) أو اسحب الملف هنا"
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-                      />
                       <div 
                         onDragOver={(e) => { e.preventDefault(); setIsDraggingCover(true); }}
                         onDragLeave={(e) => { e.preventDefault(); setIsDraggingCover(false); }}
@@ -676,13 +669,6 @@ export const SeriesManagement: React.FC = () => {
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Background Image (Optional)</label>
                     <div className="flex flex-col gap-4">
-                      <input
-                        type="text"
-                        value={formData.backgroundImage}
-                        onChange={(e) => setFormData({...formData, backgroundImage: e.target.value})}
-                        placeholder="رابط خلفية العمل (اختياري) أو اسحب الملف هنا"
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-                      />
                       <div 
                         onDragOver={(e) => { e.preventDefault(); setIsDraggingBg(true); }}
                         onDragLeave={(e) => { e.preventDefault(); setIsDraggingBg(false); }}
