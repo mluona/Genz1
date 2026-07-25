@@ -206,6 +206,16 @@ export const Reader: React.FC = () => {
   }, [viewMode, fontSize, lineHeight, fontFamily, novelTheme, textAlign, paragraphSpacing, readerLayout]);
 
   const [currentPage, setCurrentPage] = useState(0);
+
+  useEffect(() => {
+    setCurrentPage(0);
+    window.scrollTo({ top: 0, behavior: 'instant' as any });
+  }, [chapterNum]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' as any });
+  }, [chapter?.id]);
+
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
@@ -499,8 +509,9 @@ export const Reader: React.FC = () => {
     }
   };
 
-  const nextChapter = chapters.find(c => c.chapterNumber === Number(chapterNum) + 1);
-  const prevChapter = chapters.find(c => c.chapterNumber === Number(chapterNum) - 1);
+  const currentIndex = chapters.findIndex(c => c.chapterNumber === Number(chapterNum));
+  const prevChapter = currentIndex > 0 ? chapters[currentIndex - 1] : undefined;
+  const nextChapter = currentIndex !== -1 && currentIndex < chapters.length - 1 ? chapters[currentIndex + 1] : undefined;
 
   const handleUnlockChapter = async () => {
     if (!user || !profile) {
@@ -1081,7 +1092,7 @@ export const Reader: React.FC = () => {
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2 sm:gap-6">
           <button 
             disabled={!prevChapter}
-            onClick={(e) => { e.stopPropagation(); navigate(`/series/${slug}/${Number(chapterNum) - 1}`); }}
+            onClick={(e) => { e.stopPropagation(); if (prevChapter) navigate(`/series/${slug}/${prevChapter.chapterNumber}`); }}
             className="flex-1 flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 bg-zinc-900 rounded-xl sm:rounded-[1.5rem] font-black text-[9px] sm:text-[10px] uppercase tracking-widest disabled:opacity-20 hover:bg-zinc-800 transition-all border border-white/5"
           >
             <ChevronLeft className="w-4 h-4 rotate-180" /> <span className="hidden xs:inline">السابق</span>
@@ -1107,7 +1118,7 @@ export const Reader: React.FC = () => {
 
           <button 
             disabled={!nextChapter}
-            onClick={(e) => { e.stopPropagation(); navigate(`/series/${slug}/${Number(chapterNum) + 1}`); }}
+            onClick={(e) => { e.stopPropagation(); if (nextChapter) navigate(`/series/${slug}/${nextChapter.chapterNumber}`); }}
             className="flex-1 flex items-center justify-center gap-2 sm:gap-3 py-3 sm:py-4 bg-emerald-500 text-black rounded-xl sm:rounded-[1.5rem] font-black text-[9px] sm:text-[10px] uppercase tracking-widest disabled:opacity-20 hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/20"
           >
             <span className="hidden xs:inline">التالي</span> <ChevronRight className="w-4 h-4 rotate-180" />
