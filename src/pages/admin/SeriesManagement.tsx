@@ -8,10 +8,22 @@ import JSZip from 'jszip';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 
+const GENRE_MAP: Record<string, string> = {
+  'Action': 'أكشن', 'Adventure': 'مغامرة', 'Comedy': 'كوميدي', 'Drama': 'دراما', 'Fantasy': 'خيالي', 
+  'Horror': 'رعب', 'Mystery': 'غموض', 'Psychological': 'نفسي', 'Romance': 'رومانسي', 
+  'Sci-Fi': 'خيال علمي', 'Slice of Life': 'شريحة من الحياة', 'Sports': 'رياضي', 'Supernatural': 'قوى خارقة', 'Thriller': 'إثارة',
+  'Chinese': 'صينية', 'Korean': 'كورية', 'Japanese': 'يابانية', 'Magic': 'سحر', 'Time Travel': 'إعادة زمن', 'Isekai': 'ايسكاي',
+  'Martial Arts': 'فنون قتالية', 'Reincarnation': 'إعادة تجسيد', 'Cultivation': 'زراعة قوى', 'Video Games': 'ألعاب فيديو',
+  'Leveling': 'تطوير المستوى', 'System': 'نظام', 'Academy': 'أكاديمية', 'Tower': 'برج', 'Dungeons': 'دهاليز'
+};
+
 const GENRES = [
-  'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 
-  'Horror', 'Mystery', 'Psychological', 'Romance', 
-  'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller'
+  'أكشن', 'مغامرة', 'كوميدي', 'دراما', 'خيالي', 
+  'رعب', 'غموض', 'نفسي', 'رومانسي', 
+  'خيال علمي', 'شريحة من الحياة', 'رياضي', 'قوى خارقة', 'إثارة',
+  'صينية', 'كورية', 'يابانية', 'سحر', 'إعادة زمن', 'ايسكاي',
+  'فنون قتالية', 'إعادة تجسيد', 'زراعة قوى', 'ألعاب فيديو',
+  'تطوير المستوى', 'نظام', 'أكاديمية', 'برج', 'دهاليز'
 ];
 
 import { getProxiedImageUrl } from '../../utils/imageUtils';
@@ -114,7 +126,7 @@ export const SeriesManagement: React.FC = () => {
           .from('series')
           .update({
             [field]: localUrl,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: editingSeries.lastUpdated || new Date().toISOString()
           })
           .eq('id', editingSeries.id);
         
@@ -367,7 +379,7 @@ export const SeriesManagement: React.FC = () => {
       dailyViews: editingSeries?.dailyViews || 0,
       weeklyViews: editingSeries?.weeklyViews || 0,
       monthlyViews: editingSeries?.monthlyViews || 0,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: editingSeries ? (editingSeries.lastUpdated || new Date().toISOString()) : new Date().toISOString(),
     };
 
     try {
@@ -508,7 +520,15 @@ export const SeriesManagement: React.FC = () => {
                       <BookOpen className="w-4 h-4" />
                     </Link>
                     <button 
-                      onClick={() => { setEditingSeries(series); setFormData({ ...series, backgroundImage: series.backgroundImage || '' }); setIsModalOpen(true); }}
+                      onClick={() => { 
+                        setEditingSeries(series); 
+                        setFormData({ 
+                          ...series, 
+                          backgroundImage: series.backgroundImage || '',
+                          genres: (series.genres || []).map(g => GENRE_MAP[g] || g)
+                        }); 
+                        setIsModalOpen(true); 
+                      }}
                       className="p-2 text-zinc-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                       title="Edit Series"
                     >
@@ -590,7 +610,7 @@ export const SeriesManagement: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">Genres</label>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2">التصنيفات</label>
                     <div className="flex flex-wrap gap-2">
                       {GENRES.map(genre => (
                         <button

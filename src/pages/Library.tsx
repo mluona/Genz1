@@ -4,17 +4,24 @@ import { Series, SeriesType } from '../types';
 import { SeriesCard } from '../components/SeriesCard';
 import { Search, Filter, LayoutGrid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useSearchParams } from 'react-router-dom';
 
 const GENRES = [
-  'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 
-  'Horror', 'Mystery', 'Psychological', 'Romance', 
-  'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller'
+  'أكشن', 'مغامرة', 'كوميدي', 'دراما', 'خيالي', 
+  'رعب', 'غموض', 'نفسي', 'رومانسي', 
+  'خيال علمي', 'شريحة من الحياة', 'رياضي', 'قوى خارقة', 'إثارة',
+  'صينية', 'كورية', 'يابانية', 'سحر', 'إعادة زمن', 'ايسكاي',
+  'فنون قتالية', 'إعادة تجسيد', 'زراعة قوى', 'ألعاب فيديو',
+  'تطوير المستوى', 'نظام', 'أكاديمية', 'برج', 'دهاليز'
 ];
 
 const GENRE_TRANSLATIONS: Record<string, string> = {
   'Action': 'أكشن', 'Adventure': 'مغامرة', 'Comedy': 'كوميدي', 'Drama': 'دراما', 'Fantasy': 'خيالي', 
   'Horror': 'رعب', 'Mystery': 'غموض', 'Psychological': 'نفسي', 'Romance': 'رومانسي', 
-  'Sci-Fi': 'خيال علمي', 'Slice of Life': 'شريحة من الحياة', 'Sports': 'رياضي', 'Supernatural': 'قوى خارقة', 'Thriller': 'إثارة'
+  'Sci-Fi': 'خيال علمي', 'Slice of Life': 'شريحة من الحياة', 'Sports': 'رياضي', 'Supernatural': 'قوى خارقة', 'Thriller': 'إثارة',
+  'Chinese': 'صينية', 'Korean': 'كورية', 'Japanese': 'يابانية', 'Magic': 'سحر', 'Time Travel': 'إعادة زمن', 'Isekai': 'ايسكاي',
+  'Martial Arts': 'فنون قتالية', 'Reincarnation': 'إعادة تجسيد', 'Cultivation': 'زراعة قوى', 'Video Games': 'ألعاب فيديو',
+  'Leveling': 'تطوير المستوى', 'System': 'نظام', 'Academy': 'أكاديمية', 'Tower': 'برج', 'Dungeons': 'دهاليز'
 };
 
 export const Library: React.FC = () => {
@@ -23,6 +30,16 @@ export const Library: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGenre, setSelectedGenre] = useState<string | 'All'>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const genreParam = searchParams.get('genre');
+    if (genreParam) {
+      // Map English parameter to Arabic if exists
+      const arabicGenre = GENRE_TRANSLATIONS[genreParam] || genreParam;
+      setSelectedGenre(arabicGenre);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchSeries = async () => {
@@ -56,7 +73,10 @@ export const Library: React.FC = () => {
   const filteredSeries = seriesList.filter(series => {
     const matchesSearch = series.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          series.author?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesGenre = selectedGenre === 'All' || series.genres?.includes(selectedGenre);
+    const matchesGenre = selectedGenre === 'All' || (series.genres || []).some(g => {
+      const gArabic = GENRE_TRANSLATIONS[g] || g;
+      return gArabic === selectedGenre || g === selectedGenre;
+    });
     return matchesSearch && matchesGenre;
   });
 

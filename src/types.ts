@@ -25,6 +25,7 @@ export interface Series {
   weeklyViews: number;
   monthlyViews: number;
   lastUpdated: Timestamp;
+  createdAt?: Timestamp;
   slug: string;
 }
 

@@ -35,7 +35,7 @@ export const ChapterManagement: React.FC = () => {
     chapterNumber: 1,
     title: '',
     content: [] as string[],
-    publishDate: new Date().toISOString().split('T')[0],
+    publishDate: new Date().toLocaleDateString('en-CA'),
     isPremium: false,
     coinPrice: 0,
   });
@@ -107,26 +107,30 @@ export const ChapterManagement: React.FC = () => {
     };
   }, [searchParams]);
 
+  const fetchChapters = async () => {
+    if (!selectedSeries) {
+      setChapters([]);
+      return;
+    }
+    const { data, error } = await supabase
+      .from('chapters')
+      .select('*')
+      .eq('seriesId', selectedSeries.id)
+      .order('chapterNumber', { ascending: false });
+    
+    if (error) {
+      console.error("Error fetching chapters:", error);
+      return;
+    }
+    setChapters((data as Chapter[]) || []);
+  };
+
   // Fetch Chapters
   useEffect(() => {
     if (!selectedSeries) {
       setChapters([]);
       return;
     }
-
-    const fetchChapters = async () => {
-      const { data, error } = await supabase
-        .from('chapters')
-        .select('*')
-        .eq('seriesId', selectedSeries.id)
-        .order('chapterNumber', { ascending: false });
-      
-      if (error) {
-        console.error("Error fetching chapters:", error);
-        return;
-      }
-      setChapters((data as Chapter[]) || []);
-    };
 
     fetchChapters();
 
@@ -320,12 +324,135 @@ export const ChapterManagement: React.FC = () => {
     try {
       const zip = new JSZip();
       const contents = await zip.loadAsync(file);
+
+      // Check for .docx files first
+      const docxFiles = Object.keys(contents.files)
+        .filter(name => !contents.files[name].dir && /\.docx$/i.test(name))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+      if (docxFiles.length > 0) {
+        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Found ${docxFiles.length} DOCX chapters. Starting Novel import...`]);
+        
+        if (!selectedSeries) {
+          setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] ERROR: Please select a series first to import novel chapters!`]);
+          setIsSmartImporting(false);
+          return;
+        }
+
+        const parseDocxText = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+          const docxZip = new JSZip();
+          const docxContents = await docxZip.loadAsync(arrayBuffer);
+          const docFile = docxContents.file("word/document.xml");
+          if (!docFile) return "";
+          const xmlText = await docFile.async("string");
+          
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+          const paragraphs = xmlDoc.getElementsByTagName("w:p");
+          const lines: string[] = [];
+          
+          for (let i = 0; i < paragraphs.length; i++) {
+            const p = paragraphs[i];
+            const textNodes = p.getElementsByTagName("w:t");
+            let pText = "";
+            for (let j = 0; j < textNodes.length; j++) {
+              pText += textNodes[j].textContent || "";
+            }
+            lines.push(pText);
+          }
+          return lines.join("\n");
+        };
+
+        for (const name of docxFiles) {
+          const filename = name.split('/').pop() || name;
+          setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Parsing ${filename}...`]);
+          
+          const numMatch = filename.match(/(?:chapter|ch|chap|ep|episode|فصل)\s*(\d+(\.\d+)?)/i) || filename.match(/^(\d+(\.\d+)?)/);
+          let chapterNumber = 1;
+          if (numMatch) {
+            chapterNumber = parseFloat(numMatch[1]);
+          } else {
+            const anyNumMatch = filename.match(/(\d+(\.\d+)?)/);
+            if (anyNumMatch) {
+              chapterNumber = parseFloat(anyNumMatch[1]);
+            }
+          }
+
+          let chapterTitle = filename.replace(/\.docx$/i, '').trim();
+          chapterTitle = chapterTitle.replace(/^(?:chapter|ch|chap|ep|episode|فصل)?\s*\d+(\.\d+)?\s*[-_:\s]*/i, '').trim();
+          if (!chapterTitle) {
+            chapterTitle = `الفصل ${chapterNumber}`;
+          }
+
+          try {
+            const buffer = await contents.files[name].async("arraybuffer");
+            const parsedText = await parseDocxText(buffer);
+            const wordCount = parsedText.split(/\s+/).filter(Boolean).length || 0;
+
+            // Check if chapter already exists for this series
+            const { data: chaptersData, error: chaptersError } = await supabase
+              .from('chapters')
+              .select('*')
+              .eq('seriesId', selectedSeries.id)
+              .eq('chapterNumber', chapterNumber);
+
+            if (chaptersError) {
+              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error checking chapter ${chapterNumber}: ${chaptersError.message}`]);
+              continue;
+            }
+
+            if (chaptersData && chaptersData.length > 0) {
+              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Updating existing Chapter ${chapterNumber}: ${chapterTitle}`]);
+              const { error: updateError } = await supabase
+                .from('chapters')
+                .update({
+                  title: chapterTitle,
+                  content: [parsedText],
+                  pageCount: wordCount,
+                })
+                .eq('id', chaptersData[0].id);
+              if (updateError) throw updateError;
+            } else {
+              setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Creating new Chapter ${chapterNumber}: ${chapterTitle}`]);
+              const { error: insertError } = await supabase
+                .from('chapters')
+                .insert({
+                  seriesId: selectedSeries.id,
+                  chapterNumber: chapterNumber,
+                  title: chapterTitle,
+                  content: [parsedText],
+                  publishDate: new Date().toISOString(),
+                  views: 0,
+                  pageCount: wordCount,
+                  isPremium: false,
+                  coinPrice: 0,
+                });
+              if (insertError) throw insertError;
+            }
+
+            await supabase
+              .from('series')
+              .update({ lastUpdated: new Date().toISOString() })
+              .eq('id', selectedSeries.id);
+
+          } catch (err: any) {
+            setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error importing ${filename}: ${err.message}`]);
+          }
+        }
+
+        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Smart Import completed successfully!`]);
+        setIsSmartImporting(false);
+        if (smartZipInputRef.current) smartZipInputRef.current.value = '';
+        fetchChapters();
+        return;
+      }
+
       const imageFiles = Object.keys(contents.files)
         .filter(name => !contents.files[name].dir && /\.(jpe?g|png|gif|webp|avif|bmp|tiff?|jfif|svg)$/i.test(name))
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
       if (imageFiles.length === 0) {
-        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error: No images found in ZIP.`]);
+        setSmartImportLog(prev => [...prev, `[${new Date().toLocaleTimeString()}] Error: No images or DOCX found in ZIP.`]);
         setIsSmartImporting(false);
         return;
       }
@@ -589,7 +716,17 @@ export const ChapterManagement: React.FC = () => {
     setIsSaving(true);
     setError(null);
 
-    const publishDate = new Date(formData.publishDate);
+    // If formData.publishDate matches today's local date, use current time
+    const localTodayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    let publishDate: Date;
+    if (formData.publishDate === localTodayStr) {
+      publishDate = new Date(); // Use exactly now!
+    } else {
+      // Create a Date at the selected date but with current time to avoid timezone offset shifts
+      const now = new Date();
+      const [year, month, day] = formData.publishDate.split('-').map(Number);
+      publishDate = new Date(year, month - 1, day, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    }
     
     // Separate content from chapterData for non-novels
     const isNovel = selectedSeries.type === 'Novel';
@@ -731,7 +868,7 @@ export const ChapterManagement: React.FC = () => {
           chapterNumber: nextNum,
           title: '',
           content: [],
-          publishDate: new Date().toISOString().split('T')[0],
+          publishDate: new Date().toLocaleDateString('en-CA'),
           isPremium: false,
           coinPrice: 0,
         });
@@ -758,7 +895,7 @@ export const ChapterManagement: React.FC = () => {
       chapterNumber: chapters.length > 0 ? chapters[0].chapterNumber + 1 : 1,
       title: '',
       content: [],
-      publishDate: new Date().toISOString().split('T')[0],
+      publishDate: new Date().toLocaleDateString('en-CA'),
       isPremium: false,
       coinPrice: 0,
     });
@@ -820,7 +957,7 @@ export const ChapterManagement: React.FC = () => {
         chapterNumber: chapter.chapterNumber,
         title: chapter.title || '',
         content: content,
-        publishDate: new Date(chapter.publishDate).toISOString().split('T')[0],
+        publishDate: new Date(chapter.publishDate).toLocaleDateString('en-CA'),
         isPremium: chapter.isPremium || false,
         coinPrice: chapter.coinPrice || 0,
       });
@@ -875,7 +1012,7 @@ export const ChapterManagement: React.FC = () => {
                 onClick={() => smartZipInputRef.current?.click()}
                 className="w-full sm:w-auto justify-center bg-blue-500 text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-blue-400 transition-all shadow-lg shadow-blue-500/20"
               >
-                <FileArchive className="w-4 h-4" /> Smart Bulk Import
+                <FileArchive className="w-4 h-4" /> {selectedSeries?.type === 'Novel' ? 'استيراد فصول دفعة واحدة (ZIP/.docx)' : 'Smart Bulk Import'}
               </motion.button>
             )}
 

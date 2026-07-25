@@ -13,6 +13,18 @@ interface Props {
 
 export const RecentlyUpdatedCard: React.FC<Props> = ({ series }) => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const isNew = (() => {
+    const dateToUse = series.createdAt;
+    if (!dateToUse) return false;
+    try {
+      const createdDate = new Date(dateToUse);
+      const timeDiff = new Date().getTime() - createdDate.getTime();
+      const daysDiff = timeDiff / (1000 * 3600 * 24);
+      return daysDiff <= 3;
+    } catch (e) {
+      return false;
+    }
+  })();
 
   useEffect(() => {
     const fetchChapters = async () => {
@@ -87,7 +99,7 @@ export const RecentlyUpdatedCard: React.FC<Props> = ({ series }) => {
             <span className={`px-2 py-1 text-[10px] font-black text-white rounded-md uppercase tracking-tighter ${series.type === 'Novel' ? 'bg-blue-500' : 'bg-emerald-500 text-black'}`}>
               {series.type === 'Novel' ? 'رواية' : series.type === 'Manga' ? 'مانجا' : series.type === 'Manhwa' ? 'مانهوا' : series.type === 'Manhua' ? 'مانها' : series.type}
             </span>
-            {series.status === 'Ongoing' && (
+            {isNew && (
               <span className="px-2 py-1 bg-white text-[10px] font-black text-black rounded-md uppercase tracking-tighter">
                 جديد
               </span>

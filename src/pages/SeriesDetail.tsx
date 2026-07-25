@@ -12,6 +12,15 @@ import { LoginModal } from '../components/LoginModal';
 import { SeriesCard } from '../components/SeriesCard';
 import { Sparkles } from 'lucide-react';
 
+const GENRE_TRANSLATIONS: Record<string, string> = {
+  'Action': 'أكشن', 'Adventure': 'مغامرة', 'Comedy': 'كوميدي', 'Drama': 'دراما', 'Fantasy': 'خيالي', 
+  'Horror': 'رعب', 'Mystery': 'غموض', 'Psychological': 'نفسي', 'Romance': 'رومانسي', 
+  'Sci-Fi': 'خيال علمي', 'Slice of Life': 'شريحة من الحياة', 'Sports': 'رياضي', 'Supernatural': 'قوى خارقة', 'Thriller': 'إثارة',
+  'Chinese': 'صينية', 'Korean': 'كورية', 'Japanese': 'يابانية', 'Magic': 'سحر', 'Time Travel': 'إعادة زمن', 'Isekai': 'ايسكاي',
+  'Martial Arts': 'فنون قتالية', 'Reincarnation': 'إعادة تجسيد', 'Cultivation': 'زراعة قوى', 'Video Games': 'ألعاب فيديو',
+  'Leveling': 'تطوير المستوى', 'System': 'نظام', 'Academy': 'أكاديمية', 'Tower': 'برج', 'Dungeons': 'دهاليز'
+};
+
 export const SeriesDetail: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -25,6 +34,61 @@ export const SeriesDetail: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [similarWorks, setSimilarWorks] = useState<Series[]>([]);
+  const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
+  const [selectedStars, setSelectedStars] = useState(5);
+  const [hoveredStars, setHoveredStars] = useState<number | null>(null);
+  const [hasRated, setHasRated] = useState(false);
+
+  useEffect(() => {
+    if (series) {
+      const rated = localStorage.getItem(`hasRated_${series.id}`);
+      if (rated) {
+        setHasRated(true);
+      }
+    }
+  }, [series]);
+
+  const handleRatingSubmit = async () => {
+    if (!series) return;
+    if (hasRated) {
+      showToast("لقد قمت بتقييم هذا العمل بالفعل!");
+      setIsRatingModalOpen(false);
+      return;
+    }
+
+    const starsToSubmit = selectedStars;
+    const currentRating = series.rating || 5;
+    const currentCount = series.ratingCount || 1;
+    const currentTotal = currentRating * currentCount;
+    const newCount = currentCount + 1;
+    const newAverage = (currentTotal + starsToSubmit) / newCount;
+
+    try {
+      const { error } = await supabase
+        .from('series')
+        .update({
+          rating: newAverage,
+          ratingCount: newCount
+        })
+        .eq('id', series.id);
+
+      if (error) throw error;
+
+      setSeries({
+        ...series,
+        rating: newAverage,
+        ratingCount: newCount
+      });
+      setHasRated(true);
+      localStorage.setItem(`hasRated_${series.id}`, 'true');
+      showToast("شكراً لك على تقييمك!");
+    } catch (err) {
+      console.error("Error submitting rating:", err);
+      showToast("فشل إرسال التقييم");
+    } finally {
+      setIsRatingModalOpen(false);
+    }
+  };
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -329,11 +393,15 @@ export const SeriesDetail: React.FC = () => {
                     <Calendar className="w-4 h-4 text-emerald-400" />
                     <span>{series.releaseYear}</span>
                   </div>
-                  <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10 shadow-lg shrink-0">
-                    <Star className="w-4 h-4 text-emerald-400 fill-emerald-400" />
+                  <button 
+                    onClick={() => setIsRatingModalOpen(true)}
+                    className="flex items-center gap-2 bg-white/5 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10 shadow-lg shrink-0 cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/35 transition-all group"
+                    title="اضغط لتقييم العمل"
+                  >
+                    <Star className="w-4 h-4 text-emerald-400 fill-emerald-400 group-hover:scale-110 transition-transform" />
                     <span className="text-white font-bold">{series.rating.toFixed(1)}</span>
                     <span className="opacity-50">({series.ratingCount})</span>
-                  </div>
+                  </button>
                   <div className="flex items-center gap-2 bg-white/5 backdrop-blur-xl px-4 py-2 rounded-full border border-white/10 shadow-lg shrink-0">
                     <User className="w-4 h-4 text-emerald-400" />
                     <span className="truncate max-w-[100px] sm:max-w-xs">{series.author}</span>
@@ -342,8 +410,8 @@ export const SeriesDetail: React.FC = () => {
 
                 <div className="flex flex-wrap justify-center md:justify-start gap-2 pt-2">
                   {series.genres.map(genre => (
-                    <Link key={genre} to={`/search?genre=${genre}`} className="px-4 py-1.5 bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-xs font-bold text-white hover:bg-emerald-500 hover:border-emerald-500 hover:text-black transition-all cursor-pointer shadow-lg shrink-0">
-                      {genre}
+                    <Link key={genre} to={`/library?genre=${encodeURIComponent(genre)}`} className="px-4 py-1.5 bg-white/10 backdrop-blur-md border border-white/10 rounded-full text-xs font-bold text-white hover:bg-emerald-500 hover:border-emerald-500 hover:text-black transition-all cursor-pointer shadow-lg shrink-0">
+                      {GENRE_TRANSLATIONS[genre] || genre}
                     </Link>
                   ))}
                 </div>
@@ -522,6 +590,75 @@ export const SeriesDetail: React.FC = () => {
               ))}
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Rating Modal */}
+      <AnimatePresence>
+        {isRatingModalOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-white/10 shadow-2xl p-8 space-y-6 text-center"
+            >
+              <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
+                <Star className="w-8 h-8 fill-emerald-400 text-emerald-400 animate-pulse" />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-xl sm:text-2xl font-black text-white">تقييم العمل</h3>
+                <p className="text-zinc-400 text-sm font-medium">ما هو تقييمك لـ "{series?.title}"؟</p>
+              </div>
+
+              {/* Stars selection */}
+              <div className="flex justify-center items-center gap-3 py-4" dir="ltr">
+                {[1, 2, 3, 4, 5].map((starsVal) => {
+                  const isHoveredOrSelected = (hoveredStars !== null ? hoveredStars : selectedStars) >= starsVal;
+                  return (
+                    <button
+                      key={starsVal}
+                      type="button"
+                      onMouseEnter={() => setHoveredStars(starsVal)}
+                      onMouseLeave={() => setHoveredStars(null)}
+                      onClick={() => setSelectedStars(starsVal)}
+                      className="p-1 transition-transform active:scale-95 hover:scale-110 cursor-pointer"
+                    >
+                      <Star
+                        className={`w-10 h-10 transition-colors duration-200 ${
+                          isHoveredOrSelected
+                            ? "text-emerald-400 fill-emerald-400"
+                            : "text-zinc-600 fill-transparent"
+                        }`}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="text-sm font-bold text-zinc-500">
+                {selectedStars} من أصل 5 نجوم
+              </div>
+
+              <div className="flex gap-4 pt-2">
+                <button
+                  type="button"
+                  onClick={handleRatingSubmit}
+                  className="flex-1 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-black font-black uppercase tracking-wider rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95"
+                >
+                  أرسل التقييم
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsRatingModalOpen(false)}
+                  className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 text-zinc-300 font-bold rounded-2xl transition-all border border-white/10 active:scale-95"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

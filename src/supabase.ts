@@ -153,29 +153,135 @@ class SupabaseQueryBuilder {
         return { data: resultData, error: null };
       }
       else if (this.operation === "update") {
-         // Requires an ID filter to update
+         // Determine if we can do a simple direct update by ID
          const idFilter = this.filters.find(f => f.field === "id");
-         if (!idFilter) throw new Error("Update requires an eq('id', val) filter");
          
-         const docRef = doc(db, this.tableName, idFilter.val);
-         await updateDoc(docRef, this.updateData);
-         
-         tableListeners.forEach(l => {
-           if (l.tableName === this.tableName) l.callback({ eventType: "UPDATE", new: { id: idFilter.val, ...this.updateData } });
-         });
-         
-         return { data: null, error: null };
+         if (idFilter && idFilter.op === "==") {
+           // Simple direct update
+           const docRef = doc(db, this.tableName, idFilter.val);
+           await updateDoc(docRef, this.updateData);
+           
+           tableListeners.forEach(l => {
+             if (l.tableName === this.tableName) {
+               l.callback({ eventType: "UPDATE", new: { id: idFilter.val, ...this.updateData } });
+             }
+           });
+           return { data: null, error: null };
+         } else if (idFilter && idFilter.op === "in") {
+           // Bulk update by IDs
+           const ids = Array.isArray(idFilter.val) ? idFilter.val : [idFilter.val];
+           if (ids.length === 0) return { data: null, error: null };
+           
+           const batch = writeBatch(db);
+           for (const docId of ids) {
+             const docRef = doc(db, this.tableName, docId);
+             batch.update(docRef, this.updateData);
+           }
+           await batch.commit();
+           
+           ids.forEach(docId => {
+             tableListeners.forEach(l => {
+               if (l.tableName === this.tableName) {
+                 l.callback({ eventType: "UPDATE", new: { id: docId, ...this.updateData } });
+               }
+             });
+           });
+           return { data: null, error: null };
+         } else {
+           // General update based on filters: first query all matching docs, then update them in batch
+           let q: any = collection(db, this.tableName);
+           for (const f of this.filters) {
+             if (f.op === "==") q = query(q, where(f.field, "==", f.val));
+             else if (f.op === "!=") q = query(q, where(f.field, "!=", f.val));
+             else if (f.op === "in") {
+               if (f.val && f.val.length > 0) q = query(q, where(f.field, "in", f.val));
+             }
+           }
+           const snapshot = await getDocs(q);
+           if (snapshot.empty) return { data: null, error: null };
+           
+           const batch = writeBatch(db);
+           const updatedIds: string[] = [];
+           snapshot.forEach(docSnap => {
+             batch.update(docSnap.ref, this.updateData);
+             updatedIds.push(docSnap.id);
+           });
+           await batch.commit();
+           
+           updatedIds.forEach(docId => {
+             tableListeners.forEach(l => {
+               if (l.tableName === this.tableName) {
+                 l.callback({ eventType: "UPDATE", new: { id: docId, ...this.updateData } });
+               }
+             });
+           });
+           return { data: null, error: null };
+         }
       }
       else if (this.operation === "delete") {
          const idFilter = this.filters.find(f => f.field === "id");
-         if (idFilter) {
+         
+         if (idFilter && idFilter.op === "==") {
+           // Simple direct delete
            const docRef = doc(db, this.tableName, idFilter.val);
            await deleteDoc(docRef);
+           
            tableListeners.forEach(l => {
-             if (l.tableName === this.tableName) l.callback({ eventType: "DELETE", old: { id: idFilter.val } });
+             if (l.tableName === this.tableName) {
+               l.callback({ eventType: "DELETE", old: { id: idFilter.val } });
+             }
            });
+           return { data: null, error: null };
+         } else if (idFilter && idFilter.op === "in") {
+           // Bulk delete by IDs
+           const ids = Array.isArray(idFilter.val) ? idFilter.val : [idFilter.val];
+           if (ids.length === 0) return { data: null, error: null };
+           
+           const batch = writeBatch(db);
+           for (const docId of ids) {
+             const docRef = doc(db, this.tableName, docId);
+             batch.delete(docRef);
+           }
+           await batch.commit();
+           
+           ids.forEach(docId => {
+             tableListeners.forEach(l => {
+               if (l.tableName === this.tableName) {
+                 l.callback({ eventType: "DELETE", old: { id: docId } });
+               }
+             });
+           });
+           return { data: null, error: null };
+         } else {
+           // General delete based on filters: first query all matching docs, then delete them in batch
+           let q: any = collection(db, this.tableName);
+           for (const f of this.filters) {
+             if (f.op === "==") q = query(q, where(f.field, "==", f.val));
+             else if (f.op === "!=") q = query(q, where(f.field, "!=", f.val));
+             else if (f.op === "in") {
+               if (f.val && f.val.length > 0) q = query(q, where(f.field, "in", f.val));
+             }
+           }
+           const snapshot = await getDocs(q);
+           if (snapshot.empty) return { data: null, error: null };
+           
+           const batch = writeBatch(db);
+           const deletedIds: string[] = [];
+           snapshot.forEach(docSnap => {
+             batch.delete(docSnap.ref);
+             deletedIds.push(docSnap.id);
+           });
+           await batch.commit();
+           
+           deletedIds.forEach(docId => {
+             tableListeners.forEach(l => {
+               if (l.tableName === this.tableName) {
+                 l.callback({ eventType: "DELETE", old: { id: docId } });
+               }
+             });
+           });
+           return { data: null, error: null };
          }
-         return { data: null, error: null };
       }
       return { data: null, error: { message: "Unknown operation" } };
     } catch (err: any) {
