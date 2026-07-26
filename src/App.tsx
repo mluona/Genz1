@@ -8,6 +8,7 @@ import { BottomNav } from './components/BottomNav';
 import { BackToTop } from './components/BackToTop';
 import { Footer } from './components/Footer';
 import { Splash } from './components/Splash';
+import { TrafficTracker } from './components/TrafficTracker';
 import { AnimatePresence } from 'motion/react';
 
 const Home = lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
@@ -70,6 +71,7 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <Router>
+            <TrafficTracker />
             <div dir="rtl" className="min-h-screen overflow-x-hidden bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 selection:text-emerald-200 transition-colors duration-300">
               <AnimatePresence mode="wait">
                 {showSplash && (

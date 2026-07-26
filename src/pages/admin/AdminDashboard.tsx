@@ -4,15 +4,20 @@ import { Users, BookOpen, Layers, MessageSquare, TrendingUp, Eye, UserPlus, Star
 import { Series, UserProfile, Comment } from '../../types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from 'recharts';
 
-const MOCK_CHART_DATA = [
-  { name: 'Mon', visitors: 400, views: 2400 },
-  { name: 'Tue', visitors: 300, views: 1398 },
-  { name: 'Wed', visitors: 200, views: 9800 },
-  { name: 'Thu', visitors: 278, views: 3908 },
-  { name: 'Fri', visitors: 189, views: 4800 },
-  { name: 'Sat', visitors: 239, views: 3800 },
-  { name: 'Sun', visitors: 349, views: 4300 },
-];
+const initialChartData = () => {
+  const data = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+    data.push({
+      name: dayName,
+      visitors: 0,
+      views: 0
+    });
+  }
+  return data;
+};
 
 const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b'];
 
@@ -22,8 +27,9 @@ export const AdminDashboard: React.FC = () => {
     totalSeries: 0,
     totalChapters: 0,
     totalComments: 0,
-    dailyVisitors: 1240, // Mocked for now
+    dailyVisitors: 0,
   });
+  const [chartData, setChartData] = useState<any[]>(initialChartData());
   const [recentSeries, setRecentSeries] = useState<Series[]>([]);
   const [recentUsers, setRecentUsers] = useState<UserProfile[]>([]);
 
@@ -41,12 +47,50 @@ export const AdminDashboard: React.FC = () => {
         const { count: commentsCount } = await supabase
           .from('comments')
           .select('*', { count: 'exact', head: true });
+
+        // Fetch traffic for the last 7 days
+        const last7Days: string[] = [];
+        const daysMap: { [key: string]: { name: string; dateStr: string } } = {};
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const dateStr = d.toISOString().split('T')[0];
+          const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+          last7Days.push(dateStr);
+          daysMap[dateStr] = { name: dayName, dateStr };
+        }
+
+        const { data: trafficData } = await supabase
+          .from('traffic')
+          .select('*')
+          .in('date', last7Days);
+
+        const trafficList = (trafficData || []) as any[];
+
+        // Aggregate by date
+        const calculatedChartData = last7Days.map(dateStr => {
+          const recordsForDay = trafficList.filter(r => r.date === dateStr);
+          const uniqueIps = new Set(recordsForDay.map(r => r.ip));
+          return {
+            name: daysMap[dateStr]?.name || dateStr,
+            visitors: uniqueIps.size,
+            views: recordsForDay.length
+          };
+        });
+
+        setChartData(calculatedChartData);
+
+        // Calculate today's unique visitors
+        const todayStr = new Date().toISOString().split('T')[0];
+        const todayRecords = trafficList.filter(r => r.date === todayStr);
+        const dailyVisitors = new Set(todayRecords.map(r => r.ip)).size;
         
         setStats(prev => ({
           ...prev,
           totalUsers: usersCount || 0,
           totalSeries: seriesCount || 0,
           totalComments: commentsCount || 0,
+          dailyVisitors: dailyVisitors,
         }));
 
         const { data: seriesData } = await supabase
@@ -122,7 +166,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={MOCK_CHART_DATA}>
+              <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorVisitors" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.1}/>
