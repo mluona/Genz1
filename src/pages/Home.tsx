@@ -216,7 +216,7 @@ export const Home: React.FC = () => {
               </div>
             </div>
             <a 
-              href="https://discord.com" 
+              href="https://discord.gg/effXNBHsT" 
               target="_blank" 
               rel="noopener noreferrer" 
               className="bg-[#5865F2] hover:bg-[#4d5bfa] active:scale-95 text-white text-[11px] font-black px-5 py-2.5 rounded-full flex items-center gap-1.5 shadow-[0_4px_15px_rgba(88,101,242,0.25)] transition-all shrink-0 cursor-pointer"

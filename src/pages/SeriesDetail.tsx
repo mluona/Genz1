@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import CommentsSection from '../components/CommentsSection';
 import { Star, Eye, Clock, List, MessageSquare, Heart, Share2, BookOpen, ChevronRight, User, Calendar, Lock, Unlock, Coins } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
+import { formatRelativeArabicDate } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { Series, Chapter } from '../types';
@@ -449,6 +450,17 @@ export const SeriesDetail: React.FC = () => {
             </div>
           </div>
 
+          {/* Synopsis (القصة) */}
+          <section className="space-y-4 text-right">
+            <h2 className="text-2xl font-black tracking-tight flex items-center gap-3 justify-start">
+              <div className="w-1 h-6 bg-emerald-500 rounded-full" />
+              القصة
+            </h2>
+            <div className="glass-panel p-8 rounded-[2rem] leading-relaxed text-zinc-300" dir="auto">
+              {series.description}
+            </div>
+          </section>
+
           {/* Tabs */}
           <section className="space-y-8">
             <div className="flex border-b border-white/5">
@@ -488,7 +500,7 @@ export const SeriesDetail: React.FC = () => {
                           {chapter.title || `الفصل ${chapter.chapterNumber}`}
                         </h3>
                         <p className="text-[10px] sm:text-xs text-zinc-500 mt-0.5 sm:mt-1">
-                          {chapter.publishDate ? format(new Date(chapter.publishDate), 'yyyy/MM/dd') : 'مؤخراً'}
+                          {formatRelativeArabicDate(chapter.publishDate)}
                         </p>
                       </div>
                     </div>
@@ -509,17 +521,6 @@ export const SeriesDetail: React.FC = () => {
             ) : (
               <CommentsSection seriesId={series.id} isAdmin={profile?.role === 'admin'} />
             )}
-          </section>
-
-          {/* Synopsis */}
-          <section className="space-y-4 text-right">
-            <h2 className="text-2xl font-black tracking-tight flex items-center gap-3 justify-start">
-              <div className="w-1 h-6 bg-emerald-500 rounded-full" />
-              نبذة عن العمل
-            </h2>
-            <div className="glass-panel p-8 rounded-[2rem] leading-relaxed text-zinc-300" dir="auto">
-              {series.description}
-            </div>
           </section>
         </div>
 

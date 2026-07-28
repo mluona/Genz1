@@ -2,10 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Eye, Lock } from 'lucide-react';
 import { Series, Chapter } from '../types';
-import { formatDistanceToNow, format, differenceInDays } from 'date-fns';
 import { supabase } from '../supabase';
-
 import { getProxiedImageUrl } from '../utils/imageUtils';
+import { formatRelativeArabicDate } from '../utils/dateUtils';
 
 interface Props {
   series: Series;
@@ -45,42 +44,6 @@ export const RecentlyUpdatedCard: React.FC<Props> = ({ series }) => {
 
     fetchChapters();
   }, [series.id]);
-
-  const formatChapterDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const daysDiff = differenceInDays(new Date(), date);
-    let result = '';
-    if (daysDiff > 30) {
-      result = format(date, 'MMM d, yyyy');
-    } else {
-      result = formatDistanceToNow(date, { addSuffix: true });
-    }
-    // Arabize the English output of date-fns
-    return result
-      .replace('about ', 'تقريباً ')
-      .replace('over ', 'أكثر من ')
-      .replace('almost ', 'تقريباً ')
-      .replace('less than ', 'أقل من ')
-      .replace('a few seconds ago', 'منذ بضع ثوانٍ')
-      .replace('half a minute ago', 'منذ نصف دقيقة')
-      .replace('less than a minute ago', 'منذ أقل من دقيقة')
-      .replace(' minutes ago', ' دقائق مضت')
-      .replace(' minute ago', ' دقيقة مضت')
-      .replace(' hours ago', ' ساعات مضت')
-      .replace(' hour ago', ' ساعة مضت')
-      .replace(' days ago', ' أيام مضت')
-      .replace(' day ago', ' يوم مضت')
-      .replace(' months ago', ' أشهر مضت')
-      .replace(' month ago', ' شهر مضت')
-      .replace(' years ago', ' سنوات مضت')
-      .replace(' year ago', ' سنة مضت')
-      .replace('a minute ago', 'منذ دقيقة')
-      .replace('an hour ago', 'منذ ساعة')
-      .replace('a day ago', 'منذ يوم')
-      .replace('a month ago', 'منذ شهر')
-      .replace('a year ago', 'منذ سنة')
-      .replace('ago', 'مضت');
-  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -138,7 +101,7 @@ export const RecentlyUpdatedCard: React.FC<Props> = ({ series }) => {
               {chapter.isPremium && <Lock className="w-3 h-3 text-amber-500" />}
             </span>
             <span className="text-[10px] font-medium text-zinc-500 whitespace-nowrap">
-              {formatChapterDate(chapter.publishDate)}
+              {formatRelativeArabicDate(chapter.publishDate)}
             </span>
           </Link>
         ))}
