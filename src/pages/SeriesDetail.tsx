@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import CommentsSection from '../components/CommentsSection';
-import { Star, Eye, Clock, List, MessageSquare, Heart, Share2, BookOpen, ChevronRight, User, Calendar, Lock, Unlock, Coins } from 'lucide-react';
+import { Star, Eye, Clock, List, MessageSquare, Heart, Share2, BookOpen, ChevronRight, User, Calendar, Lock, Unlock, Coins, Paintbrush, Tag, Activity, Info, Languages } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { formatRelativeArabicDate } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
@@ -526,34 +526,106 @@ export const SeriesDetail: React.FC = () => {
 
         {/* Sidebar */}
         <div className="space-y-8">
-          <div className="glass-panel p-8 rounded-[2rem] space-y-8 text-right">
-            <h3 className="text-lg font-black tracking-tight uppercase tracking-widest text-zinc-500">التفاصيل</h3>
+          <div className="glass-panel p-6 sm:p-8 rounded-[2rem] space-y-8 text-right border border-white/5 shadow-2xl relative overflow-hidden group">
+            {/* Elegant decorative background glow */}
+            <div className="absolute -top-12 -left-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/15 transition-all duration-700 pointer-events-none" />
             
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-zinc-500">الرسام</span>
-                <span className="text-sm font-bold">{series.artist}</span>
+            <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+              <span className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+                <Info className="w-5 h-5" />
+              </span>
+              <h3 className="text-lg sm:text-xl font-black tracking-tight text-white">تفاصيل العمل</h3>
+            </div>
+            
+            <div className="space-y-4">
+              {/* الكاتب */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-all border border-white/5 group/row">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 bg-zinc-900 rounded-lg text-zinc-400 group-hover/row:text-emerald-400 transition-colors">
+                    <User className="w-4 h-4" />
+                  </span>
+                  <span className="text-xs font-black text-zinc-400">الكاتب</span>
+                </div>
+                <span className="text-sm font-bold text-white">{series.author}</span>
               </div>
-              <div className="h-px bg-white/5" />
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-zinc-500">سنة الإصدار</span>
-                <span className="text-sm font-bold">{series.releaseYear}</span>
+
+              {/* المترجم */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-all border border-white/5 group/row">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 bg-zinc-900 rounded-lg text-zinc-400 group-hover/row:text-emerald-400 transition-colors">
+                    <Languages className="w-4 h-4" />
+                  </span>
+                  <span className="text-xs font-black text-zinc-400">المترجم</span>
+                </div>
+                <span className="text-sm font-bold text-white">{series.artist}</span>
               </div>
-              <div className="h-px bg-white/5" />
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-zinc-500">النوع</span>
-                <span className="px-2 py-1 bg-zinc-950 rounded-lg text-[10px] font-black uppercase tracking-widest border border-white/5">
-                  رواية
+
+              {/* سنة الإصدار */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-all border border-white/5 group/row">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 bg-zinc-900 rounded-lg text-zinc-400 group-hover/row:text-emerald-400 transition-colors">
+                    <Calendar className="w-4 h-4" />
+                  </span>
+                  <span className="text-xs font-black text-zinc-400">سنة الإصدار</span>
+                </div>
+                <span className="text-sm font-bold text-white">{series.releaseYear}</span>
+              </div>
+
+              {/* النوع */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-all border border-white/5 group/row">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 bg-zinc-900 rounded-lg text-zinc-400 group-hover/row:text-emerald-400 transition-colors">
+                    <BookOpen className="w-4 h-4" />
+                  </span>
+                  <span className="text-xs font-black text-zinc-400">النوع</span>
+                </div>
+                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-emerald-500/20 shadow-sm shadow-emerald-500/5">
+                  {series.type === 'Novel' ? 'رواية' : series.type}
                 </span>
+              </div>
+
+              {/* الحالة */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-all border border-white/5 group/row">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 bg-zinc-900 rounded-lg text-zinc-400 group-hover/row:text-emerald-400 transition-colors">
+                    <Activity className="w-4 h-4" />
+                  </span>
+                  <span className="text-xs font-black text-zinc-400">الحالة</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${series.status === 'Ongoing' ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-500'}`} />
+                  <span className={`text-xs font-bold ${series.status === 'Ongoing' ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                    {series.status === 'Ongoing' ? 'مستمر' : series.status === 'Completed' ? 'مكتمل' : series.status}
+                  </span>
+                </div>
+              </div>
+
+              {/* المشاهدات */}
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-all border border-white/5 group/row">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 bg-zinc-900 rounded-lg text-zinc-400 group-hover/row:text-emerald-400 transition-colors">
+                    <Eye className="w-4 h-4" />
+                  </span>
+                  <span className="text-xs font-black text-zinc-400">المشاهدات</span>
+                </div>
+                <span className="text-sm font-bold text-white">{series.views.toLocaleString()}</span>
               </div>
             </div>
 
-            <div className="pt-4 text-right">
-              <p className="text-xs font-black uppercase tracking-widest text-zinc-500 mb-4">الوسوم</p>
-              <div className="flex flex-wrap gap-2">
+            {/* Tags section */}
+            <div className="pt-4 text-right space-y-4 border-t border-white/5">
+              <div className="flex items-center gap-2 text-zinc-400">
+                <Tag className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-black uppercase tracking-widest">الوسوم</span>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
                 {series.tags.map(tag => (
-                  <span key={tag} className="px-3 py-1 bg-zinc-950 text-zinc-400 rounded-lg text-[10px] font-bold border border-white/5">
-                    #{tag}
+                  <span 
+                    key={tag} 
+                    className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-emerald-400 rounded-xl text-[10px] font-bold border border-white/5 transition-all hover:scale-105 active:scale-95 cursor-default flex items-center gap-1"
+                  >
+                    <span>#</span>
+                    <span>{tag}</span>
                   </span>
                 ))}
               </div>

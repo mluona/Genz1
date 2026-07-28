@@ -617,7 +617,7 @@ export const Reader: React.FC = () => {
 
       if (transError) throw transError;
       
-      showToast(`شكراً لك على دعم الكاتب/الرسام بـ ${amount} عملة!`);
+      showToast(`شكراً لك على دعم الكاتب/المترجم بـ ${amount} عملة!`);
     } catch (error) {
       console.error("Error tipping creator:", error);
       showToast("فشل إرسال الدعم.");
@@ -862,7 +862,7 @@ export const Reader: React.FC = () => {
               <Lock className="w-12 h-12 text-amber-500" />
             </div>
             <h2 className="text-3xl font-black uppercase tracking-tighter text-center">فصل بريميوم (مدفوع)</h2>
-            <p className="text-zinc-400 text-center">يتطلب هذا الفصل عملات لفتحه. ادعم الكاتب/الرسام لمواصلة القراءة الممتعة!</p>
+            <p className="text-zinc-400 text-center">يتطلب هذا الفصل عملات لفتحه. ادعم الكاتب/المترجم لمواصلة القراءة الممتعة!</p>
             <button 
               onClick={(e) => { e.stopPropagation(); handleUnlockChapter(); }} 
               className="flex items-center gap-3 px-8 py-4 bg-amber-500 text-black font-black rounded-2xl hover:scale-105 transition-all shadow-xl shadow-amber-500/20 w-full justify-center mt-4"
@@ -921,9 +921,9 @@ export const Reader: React.FC = () => {
               <div className="bg-zinc-900/50 border border-amber-500/20 rounded-3xl p-8 max-w-md mx-auto space-y-6 text-right">
                 <div className="flex items-center justify-center gap-3 text-amber-500">
                   <Heart className="w-6 h-6 fill-amber-500 animate-pulse" />
-                  <h3 className="text-xl font-black uppercase tracking-tight text-center">ادعم الكاتب/الرسام</h3>
+                  <h3 className="text-xl font-black uppercase tracking-tight text-center">ادعم الكاتب/المترجم</h3>
                 </div>
-                <p className="text-sm text-zinc-400 text-center">هل أعجبك هذا الفصل؟ أظهر دعمك عن طريق إرسال بعض العملات للكاتب/الرسام!</p>
+                <p className="text-sm text-zinc-400 text-center">هل أعجبك هذا الفصل؟ أظهر دعمك عن طريق إرسال بعض العملات للكاتب/المترجم!</p>
                 <div className="flex flex-wrap justify-center gap-3">
                   {[10, 50, 100].map(amount => (
                     <button
@@ -993,9 +993,9 @@ export const Reader: React.FC = () => {
               <div className="bg-zinc-900/50 border border-amber-500/20 rounded-3xl p-8 max-w-md mx-auto space-y-6 text-right">
                 <div className="flex items-center justify-center gap-3 text-amber-500">
                   <Heart className="w-6 h-6 fill-amber-500" />
-                  <h3 className="text-xl font-black uppercase tracking-tight text-center">ادعم الكاتب/الرسام</h3>
+                  <h3 className="text-xl font-black uppercase tracking-tight text-center">ادعم الكاتب/المترجم</h3>
                 </div>
-                <p className="text-sm text-zinc-400 text-center">هل أعجبك هذا الفصل؟ أظهر دعمك عن طريق إرسال بعض العملات للكاتب/الرسام!</p>
+                <p className="text-sm text-zinc-400 text-center">هل أعجبك هذا الفصل؟ أظهر دعمك عن طريق إرسال بعض العملات للكاتب/المترجم!</p>
                 <div className="flex flex-wrap justify-center gap-3 font-mono">
                   {[10, 50, 100].map(amount => (
                     <button
