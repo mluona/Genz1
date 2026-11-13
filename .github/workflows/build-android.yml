@@ -10,6 +10,7 @@ on:
 env:
   PUPPETEER_SKIP_DOWNLOAD: 'true'
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
+  NODE_OPTIONS: '--max-old-space-size=4096'
 
 jobs:
   build-android:
@@ -20,10 +21,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Set up Java 21
@@ -32,8 +33,11 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
       - name: Type check
         run: npm run lint
@@ -48,10 +52,14 @@ jobs:
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      - name: Accept Android SDK licenses
+      - name: Prepare Android SDK & accept licenses
         run: |
-          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
-            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDKMANAGER=$(find "$SDK_DIR" -name sdkmanager -type f 2>/dev/null | head -n 1 || true)
+          if [ -n "$SDKMANAGER" ]; then
+            chmod +x "$SDKMANAGER"
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" > /dev/null 2>&1 || true
           fi
 
       - name: Grant execute permission for gradlew
@@ -59,7 +67,7 @@ jobs:
 
       - name: Build Debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
