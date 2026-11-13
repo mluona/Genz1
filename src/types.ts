@@ -57,6 +57,7 @@ export interface UserProfile {
   createdAt?: Timestamp;
   coins?: number;
   unlockedChapters?: string[];
+  readChapters?: string[];
 }
 
 export interface Comment {

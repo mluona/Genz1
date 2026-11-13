@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import CommentsSection from '../components/CommentsSection';
-import { ChevronLeft, ChevronRight, Settings, Maximize2, List, Moon, Sun, Layout, ArrowUp, Bookmark, BookmarkCheck, Menu, X, Share2, MessageSquare, Heart, Lock, Coins } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings, Maximize2, List, Moon, Sun, Layout, ArrowUp, Bookmark, BookmarkCheck, Menu, X, Share2, MessageSquare, Heart, Lock, Coins, Check, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -426,7 +426,25 @@ export const Reader: React.FC = () => {
               console.warn("Failed to increment views:", vErr);
             }
             
-            // Save to history
+            // Save to history & read chapters
+            try {
+              const localKey = `read_chapters_${user?.id || 'guest'}`;
+              const localRead: string[] = JSON.parse(localStorage.getItem(localKey) || '[]');
+              if (!localRead.includes(c.id)) {
+                localRead.push(c.id);
+                localStorage.setItem(localKey, JSON.stringify(localRead));
+              }
+              // Also store under guest key if applicable
+              const guestRead: string[] = JSON.parse(localStorage.getItem('read_chapters_guest') || '[]');
+              if (!guestRead.includes(c.id)) {
+                guestRead.push(c.id);
+                localStorage.setItem('read_chapters_guest', JSON.stringify(guestRead));
+              }
+              localStorage.setItem(`last_read_${s.id}`, c.id);
+            } catch (err) {
+              console.error("Failed to update local read history:", err);
+            }
+
             if (user && profile) {
               const currentHistory = profile.history || [];
               const newHistory = currentHistory.filter((h: any) => h.seriesId !== s.id);
@@ -441,9 +459,15 @@ export const Reader: React.FC = () => {
                 newHistory.shift();
               }
               
+              const currentRead: string[] = (profile as any)?.readChapters || [];
+              const updatedRead = currentRead.includes(c.id) ? currentRead : [...currentRead, c.id];
+
               await supabase
                 .from('profiles')
-                .update({ history: newHistory })
+                .update({ 
+                  history: newHistory,
+                  readChapters: updatedRead
+                })
                 .eq('id', user.id);
             }
           }
@@ -508,6 +532,23 @@ export const Reader: React.FC = () => {
       setIsFullscreen(false);
     }
   };
+
+  const readChapterIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    try {
+      const userKey = `read_chapters_${user?.id || 'guest'}`;
+      const localRead: string[] = JSON.parse(localStorage.getItem(userKey) || '[]');
+      localRead.forEach(id => ids.add(id));
+
+      const guestRead: string[] = JSON.parse(localStorage.getItem('read_chapters_guest') || '[]');
+      guestRead.forEach(id => ids.add(id));
+    } catch (e) {}
+
+    if (profile && (profile as any).readChapters) {
+      ((profile as any).readChapters as string[]).forEach(id => ids.add(id));
+    }
+    return ids;
+  }, [user, profile]);
 
   const currentIndex = chapters.findIndex(c => c.chapterNumber === Number(chapterNum));
   const prevChapter = currentIndex > 0 ? chapters[currentIndex - 1] : undefined;
@@ -1166,23 +1207,33 @@ export const Reader: React.FC = () => {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-                {chapters.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => {
-                      navigate(`/series/${slug}/${c.chapterNumber}`);
-                      setShowSidebar(false);
-                    }}
-                    className={`w-full text-right px-4 py-3 rounded-xl transition-all flex items-center justify-between ${
-                      c.chapterNumber === Number(chapterNum)
-                        ? 'bg-emerald-500/10 text-emerald-500 font-bold border border-emerald-500/20'
-                        : 'hover:bg-white/5 text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    <span dir="auto">الفصل {c.chapterNumber} {c.title ? `- ${c.title}` : ''}</span>
-                    {c.chapterNumber === Number(chapterNum) && <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mr-2" />}
-                  </button>
-                ))}
+                {chapters.map(c => {
+                  const isCurrent = c.chapterNumber === Number(chapterNum);
+                  const isRead = readChapterIds.has(c.id);
+
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => {
+                        navigate(`/series/${slug}/${c.chapterNumber}`);
+                        setShowSidebar(false);
+                      }}
+                      className={`w-full text-right px-4 py-3 rounded-xl transition-all flex items-center justify-between gap-2 ${
+                        isCurrent
+                          ? 'bg-emerald-500/20 text-emerald-400 font-black border border-emerald-500/40 shadow-sm'
+                          : isRead
+                          ? 'bg-emerald-500/[0.04] text-zinc-300 border border-emerald-500/10 hover:bg-emerald-500/10'
+                          : 'hover:bg-white/5 text-zinc-400 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isRead && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                        <span dir="auto" className="truncate">الفصل {c.chapterNumber} {c.title ? `- ${c.title}` : ''}</span>
+                      </div>
+                      {isCurrent && <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 mr-2 animate-pulse" />}
+                    </button>
+                  );
+                })}
               </div>
             </motion.div>
           </>

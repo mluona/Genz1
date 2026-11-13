@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
-import { Series } from '../types';
-import { SeriesCard } from '../components/SeriesCard';
-import { RecentlyUpdatedCard } from '../components/RecentlyUpdatedCard';
-import { TrendingUp, Clock, Star, ChevronRight, Sparkles, Forward, Bug, Send, X } from 'lucide-react';
+import { Series, Chapter } from '../types';
+import { CollectionsSection } from '../components/CollectionsSection';
+import { LatestUpdatesSection } from '../components/LatestUpdatesSection';
+import { EditorsChoiceSection } from '../components/EditorsChoiceSection';
+import { ChevronLeft, Forward, Bug, Send, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { FeaturedSlider } from '../components/FeaturedSlider';
@@ -17,14 +18,14 @@ const DiscordIcon = () => (
 );
 
 export const Home: React.FC = () => {
+  const [allSeries, setAllSeries] = useState<Series[]>([]);
   const [recentlyUpdated, setRecentlyUpdated] = useState<Series[]>([]);
+  const [chaptersBySeries, setChaptersBySeries] = useState<Record<string, Chapter[]>>({});
   const [dailyTop, setDailyTop] = useState<Series[]>([]);
-  const [weeklyTop, setWeeklyTop] = useState<Series[]>([]);
-  const [monthlyTop, setMonthlyTop] = useState<Series[]>([]);
   const [newWorks, setNewWorks] = useState<Series[]>([]);
   const [popularWorks, setPopularWorks] = useState<Series[]>([]);
+  const [completedWorks, setCompletedWorks] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTopTab, setActiveTopTab] = useState<'Daily' | 'Weekly' | 'Monthly'>('Daily');
 
   // Interactive Options States
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -97,39 +98,53 @@ export const Home: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch Recently Updated
+        // Fetch All Series for Collections
+        const { data: allData } = await supabase
+          .from('series')
+          .select('id, title, coverImage, genres, slug, type, rating')
+          .order('rating', { ascending: false });
+        if (allData) setAllSeries(allData as Series[]);
+
+        // Fetch Recently Updated (24 items so category filters have plenty of results)
         const { data: recentData } = await supabase
           .from('series')
           .select('*')
           .order('lastUpdated', { ascending: false })
-          .limit(10);
-        if (recentData) setRecentlyUpdated(recentData as Series[]);
+          .limit(24);
+        if (recentData) {
+          const recentSeriesList = recentData as Series[];
+          setRecentlyUpdated(recentSeriesList);
 
-        // Fetch Daily Top
+          const recentIds = recentSeriesList.map((s) => s.id);
+          if (recentIds.length > 0) {
+            const { data: chaptersData } = await supabase
+              .from('chapters')
+              .select('id, seriesId, chapterNumber, title, publishDate, isPremium, coinPrice')
+              .in('seriesId', recentIds)
+              .order('chapterNumber', { ascending: false });
+
+            if (chaptersData) {
+              const grouped: Record<string, Chapter[]> = {};
+              (chaptersData as Chapter[]).forEach((ch) => {
+                if (!grouped[ch.seriesId]) grouped[ch.seriesId] = [];
+                if (grouped[ch.seriesId].length < 4) {
+                  grouped[ch.seriesId].push(ch);
+                }
+              });
+              setChaptersBySeries(grouped);
+            }
+          }
+        }
+
+        // Fetch Daily Top (5 works max for Trending)
         const { data: dailyData } = await supabase
           .from('series')
           .select('*')
           .order('dailyViews', { ascending: false })
-          .limit(6);
+          .limit(5);
         if (dailyData) setDailyTop(dailyData as Series[]);
 
-        // Fetch Weekly Top
-        const { data: weeklyData } = await supabase
-          .from('series')
-          .select('*')
-          .order('weeklyViews', { ascending: false })
-          .limit(6);
-        if (weeklyData) setWeeklyTop(weeklyData as Series[]);
-
-        // Fetch Monthly Top
-        const { data: monthlyData } = await supabase
-          .from('series')
-          .select('*')
-          .order('monthlyViews', { ascending: false })
-          .limit(6);
-        if (monthlyData) setMonthlyTop(monthlyData as Series[]);
-
-        // Fetch New Works (الأعمال الجديدة)
+        // Fetch Recently Added (أضيف مؤخراً)
         const { data: newData } = await supabase
           .from('series')
           .select('*')
@@ -137,13 +152,22 @@ export const Home: React.FC = () => {
           .limit(10);
         if (newData) setNewWorks(newData as Series[]);
 
-        // Fetch Popular Works
+        // Fetch Popular Works / Editor's Choice
         const { data: popularData } = await supabase
           .from('series')
           .select('*')
           .order('rating', { ascending: false })
           .limit(6);
         if (popularData) setPopularWorks(popularData as Series[]);
+
+        // Fetch Completed Works (الأعمال المكتملة)
+        const { data: completedData } = await supabase
+          .from('series')
+          .select('*')
+          .eq('status', 'Completed')
+          .order('lastUpdated', { ascending: false })
+          .limit(10);
+        if (completedData) setCompletedWorks(completedData as Series[]);
 
       } catch (error) {
         console.error("Error fetching data from Supabase:", error);
@@ -184,8 +208,10 @@ export const Home: React.FC = () => {
         <FeaturedSlider seriesList={popularWorks} />
       </section>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-30 space-y-24 mt-12">
-        
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-30 space-y-20 mt-10">
+        {/* Collections Carousel Section */}
+        <CollectionsSection seriesList={allSeries} />
+
         {/* Interactive Features Block (تحت متميز) */}
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Share Card */}
@@ -248,103 +274,158 @@ export const Home: React.FC = () => {
           </div>
         </section>
 
-        {/* Recently Updated */}
-        <section>
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <Clock className="w-6 h-6 text-emerald-500" />
-              <h2 className="text-2xl font-black uppercase tracking-tight">أحدث التحديثات</h2>
-            </div>
-            <Link to="/library" className="flex items-center gap-1 text-sm font-bold text-zinc-400 hover:text-emerald-500 transition-colors">
-              عرض الكل <ChevronRight className="w-4 h-4 rotate-180" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {recentlyUpdated.slice(0, 10).map((series) => (
-              <RecentlyUpdatedCard key={series.id} series={series} />
-            ))}
-          </div>
-        </section>
+        {/* Latest Updates Section */}
+        <LatestUpdatesSection seriesList={recentlyUpdated} chaptersBySeries={chaptersBySeries} />
 
-        {/* New Works Section */}
-        <section>
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <Sparkles className="w-6 h-6 text-emerald-500 animate-pulse" />
-              <h2 className="text-2xl font-black uppercase tracking-tight">الاعمال الجديدة</h2>
+        {/* Trending Section (رائج - 5 أعمال الأكثر مشاهدة يومياً) */}
+        {dailyTop.length > 0 && (
+          <section className="space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-black tracking-tight text-white">رائج</h2>
             </div>
-            <Link to="/library" className="flex items-center gap-1 text-sm font-bold text-zinc-400 hover:text-emerald-500 transition-colors">
-              عرض الكل <ChevronRight className="w-4 h-4 rotate-180" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {newWorks.slice(0, 5).map((series) => (
-              <SeriesCard key={series.id} series={series} />
-            ))}
-          </div>
-        </section>
 
-        {/* Top Viewed */}
-        <section className="bg-zinc-900/30 p-6 sm:p-8 rounded-3xl border border-white/5 hover:border-white/10 transition-colors">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8">
-            <div className="flex items-center gap-3">
-              <TrendingUp className="w-6 h-6 text-emerald-500" />
-              <h2 className="text-2xl font-black uppercase tracking-tight">الأكثر مشاهدة</h2>
-            </div>
-            
-            {/* Tabs */}
-            <div className="flex items-center gap-2 bg-zinc-950/50 p-1.5 rounded-2xl border border-white/5 overflow-x-auto hide-scrollbar">
-              {([
-                { id: 'Daily', label: 'يومي' },
-                { id: 'Weekly', label: 'أسبوعي' },
-                { id: 'Monthly', label: 'شهري' }
-              ] as const).map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTopTab(tab.id)}
-                  className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${
-                    activeTopTab === tab.id 
-                      ? 'bg-emerald-500 text-black shadow-[0_0_20px_rgba(16,185,129,0.2)]' 
-                      : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                  }`}
+            <div className="flex gap-3.5 sm:gap-4 overflow-x-auto hide-scrollbar pb-2 snap-x snap-mandatory">
+              {dailyTop.slice(0, 5).map((series) => (
+                <Link
+                  key={series.id}
+                  to={`/series/${series.slug}`}
+                  className="w-[42vw] max-w-[175px] sm:w-[200px] md:w-[220px] lg:w-[calc((100%-4rem)/5)] shrink-0 snap-start aspect-[3/4] rounded-2xl overflow-hidden relative bg-zinc-900 border border-white/10 group block"
                 >
-                  {tab.label}
-                </button>
+                  <img
+                    src={getProxiedImageUrl(series.coverImage)}
+                    alt={series.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/20" />
+
+                  <div className="absolute top-2.5 right-2.5">
+                    <span className="px-2.5 py-0.5 rounded-full bg-black/55 backdrop-blur-md text-white text-[10px] font-bold border border-white/15">
+                      {series.type === 'Novel' ? 'رواية' : series.type}
+                    </span>
+                  </div>
+
+                  <div className="absolute bottom-3 left-3 right-3 text-right" dir="auto">
+                    {series.author && (
+                      <p className="text-[11px] text-zinc-300/85 truncate mb-0.5">{series.author}</p>
+                    )}
+                    <h3 className="text-sm sm:text-base font-black text-white leading-snug line-clamp-2 drop-shadow-md group-hover:text-emerald-400 transition-colors">
+                      {series.title}
+                    </h3>
+                  </div>
+                </Link>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* Recently Added Section (أضيف مؤخراً) */}
+        <section className="space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black tracking-tight text-white">أضيف مؤخراً</h2>
+            <Link
+              to="/library"
+              className="flex items-center gap-1 text-sm font-bold text-zinc-400 hover:text-emerald-400 transition-colors"
+            >
+              <span>عرض الكل</span>
+              <ChevronLeft className="w-4 h-4" />
+            </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(activeTopTab === 'Daily' ? dailyTop : activeTopTab === 'Weekly' ? weeklyTop : monthlyTop).map((series, i) => (
-              <div key={series.id} className="flex items-center gap-4 group bg-zinc-950/30 p-4 rounded-2xl border border-white/5 hover:border-emerald-500/30 transition-colors">
-                <span className={`text-4xl font-black w-10 text-center transition-colors ${
-                  i === 0 ? 'text-emerald-500' : 
-                  i === 1 ? 'text-blue-500' : 
-                  i === 2 ? 'text-purple-500' : 
-                  'text-zinc-800 group-hover:text-zinc-600'
-                }`}>
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <SeriesCard series={series} compact />
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 sm:gap-4">
+            {newWorks.slice(0, 10).map((series) => (
+              <Link
+                key={series.id}
+                to={`/series/${series.slug}`}
+                className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 group block"
+              >
+                <img
+                  src={getProxiedImageUrl(series.coverImage)}
+                  alt={series.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  referrerPolicy="no-referrer"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/20" />
+
+                <div className="absolute top-2.5 right-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-full bg-black/55 backdrop-blur-md text-white text-[10px] font-bold border border-white/15">
+                    جديد
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-black/55 backdrop-blur-md text-white text-[10px] font-bold border border-white/15">
+                    {series.type === 'Novel' ? 'رواية' : series.type}
+                  </span>
                 </div>
-              </div>
+
+                <div className="absolute bottom-3 left-3 right-3 text-right" dir="auto">
+                  {series.author && (
+                    <p className="text-[11px] text-zinc-300/85 truncate mb-0.5">{series.author}</p>
+                  )}
+                  <h3 className="text-sm sm:text-base font-black text-white leading-snug line-clamp-2 drop-shadow-md group-hover:text-emerald-400 transition-colors">
+                    {series.title}
+                  </h3>
+                </div>
+              </Link>
             ))}
           </div>
         </section>
 
-        {/* Popular Works */}
-        <section className="bg-zinc-900/50 border border-white/5 rounded-[3rem] p-8 md:p-12 hover:border-white/10 transition-colors">
-          <div className="flex items-center gap-3 mb-12">
-            <Star className="w-6 h-6 text-yellow-500" />
-            <h2 className="text-3xl font-black uppercase tracking-tight">الأعمال الشهيرة</h2>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
-            {popularWorks.map((series) => (
-              <SeriesCard key={series.id} series={series} />
-            ))}
-          </div>
-        </section>
+        {/* Editor's Choice Section (اختيار المحررين) */}
+        <EditorsChoiceSection seriesList={popularWorks} />
+
+        {/* Completed Series Section (الأعمال المكتملة - تظهر فقط عند وجود أعمال مكتملة) */}
+        {completedWorks.length > 0 && (
+          <section className="space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-black tracking-tight text-white">الأعمال المكتملة</h2>
+              <Link
+                to="/library"
+                className="flex items-center gap-1 text-sm font-bold text-zinc-400 hover:text-emerald-400 transition-colors"
+              >
+                <span>عرض الكل</span>
+                <ChevronLeft className="w-4 h-4" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 sm:gap-4">
+              {completedWorks.map((series) => (
+                <Link
+                  key={series.id}
+                  to={`/series/${series.slug}`}
+                  className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 group block"
+                >
+                  <img
+                    src={getProxiedImageUrl(series.coverImage)}
+                    alt={series.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-black/20" />
+
+                  <div className="absolute top-2.5 right-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full bg-black/55 backdrop-blur-md text-white text-[10px] font-bold border border-white/15">
+                      {series.type === 'Novel' ? 'رواية' : series.type}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-red-600/85 backdrop-blur-md text-white text-[10px] font-bold border border-red-400/30">
+                      مكتمل
+                    </span>
+                  </div>
+
+                  <div className="absolute bottom-3 left-3 right-3 text-right" dir="auto">
+                    {series.author && (
+                      <p className="text-[11px] text-zinc-300/85 truncate mb-0.5">{series.author}</p>
+                    )}
+                    <h3 className="text-sm sm:text-base font-black text-white leading-snug line-clamp-2 drop-shadow-md group-hover:text-emerald-400 transition-colors">
+                      {series.title}
+                    </h3>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
       </div>
 

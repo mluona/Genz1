@@ -82,6 +82,13 @@
   ::-webkit-scrollbar-thumb {
     @apply bg-zinc-800 rounded-full hover:bg-zinc-700 transition-colors;
   }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @layer components {

@@ -9,9 +9,10 @@ import { getProxiedImageUrl } from '../utils/imageUtils';
 interface Props {
   series: Series;
   compact?: boolean;
+  size?: 'default' | 'small';
 }
 
-export const SeriesCard: React.FC<Props> = ({ series, compact = false }) => {
+export const SeriesCard: React.FC<Props> = ({ series, compact = false, size = 'default' }) => {
   const isNew = (() => {
     const dateToUse = series.createdAt;
     if (!dateToUse) return false;
@@ -48,8 +49,8 @@ export const SeriesCard: React.FC<Props> = ({ series, compact = false }) => {
   }
 
   return (
-    <Link to={`/series/${series.slug}`} className="group relative flex flex-col gap-3">
-      <div className="aspect-[3/4] relative overflow-hidden rounded-2xl bg-zinc-900 border border-white/5">
+    <Link to={`/series/${series.slug}`} className={`group relative flex flex-col ${size === 'small' ? 'gap-1.5' : 'gap-3'}`}>
+      <div className={`aspect-[3/4] relative overflow-hidden bg-zinc-900 border border-white/5 ${size === 'small' ? 'rounded-xl' : 'rounded-2xl'}`}>
         <img
           src={getProxiedImageUrl(series.coverImage)}
           alt={series.title}
@@ -60,31 +61,31 @@ export const SeriesCard: React.FC<Props> = ({ series, compact = false }) => {
         
         {/* Badges */}
         {isNew && (
-          <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
-            <span className="px-2 py-1 bg-white text-[10px] font-black text-black rounded-md uppercase tracking-tighter">
+          <div className={`absolute flex flex-col gap-2 items-end ${size === 'small' ? 'top-2 right-2' : 'top-3 right-3'}`}>
+            <span className={`bg-white font-black text-black rounded uppercase tracking-tighter ${size === 'small' ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-1 text-[10px]'}`}>
               جديد
             </span>
           </div>
         )}
 
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex-row-reverse">
-          <div className="flex items-center gap-1 text-xs font-bold flex-row-reverse">
+        <div className={`absolute flex items-center justify-between text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex-row-reverse ${size === 'small' ? 'bottom-2 left-2 right-2' : 'bottom-3 left-3 right-3'}`}>
+          <div className={`flex items-center gap-1 font-bold flex-row-reverse ${size === 'small' ? 'text-[10px]' : 'text-xs'}`}>
             <Star className="w-3 h-3 fill-emerald-500 text-emerald-500" />
             {series.rating.toFixed(1)}
           </div>
-          <div className="flex items-center gap-1 text-xs font-bold flex-row-reverse">
+          <div className={`flex items-center gap-1 font-bold flex-row-reverse ${size === 'small' ? 'text-[10px]' : 'text-xs'}`}>
             <Eye className="w-3 h-3" />
             {series.views > 1000 ? `${(series.views / 1000).toFixed(1)}k` : series.views}
           </div>
         </div>
       </div>
       
-      <div className="flex flex-col gap-1 text-right">
-        <h3 className="text-sm font-bold text-white line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors">
+      <div className="flex flex-col gap-0.5 text-right">
+        <h3 className={`${size === 'small' ? 'text-xs leading-snug line-clamp-2' : 'text-sm leading-tight line-clamp-2'} font-bold text-white group-hover:text-emerald-400 transition-colors`}>
           {series.title}
         </h3>
-        <div className="flex items-center gap-2 text-[10px] font-medium text-zinc-500 uppercase tracking-widest flex-row-reverse justify-end">
-          <Clock className="w-3 h-3" />
+        <div className={`flex items-center gap-1.5 font-medium text-zinc-500 uppercase tracking-widest flex-row-reverse justify-end ${size === 'small' ? 'text-[9px]' : 'text-[10px]'}`}>
+          <Clock className="w-2.5 h-2.5" />
           <span>
             {(() => {
               if (!series.lastUpdated) return 'غير معروف';

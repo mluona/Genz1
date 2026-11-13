@@ -4,7 +4,6 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Navbar } from './components/Navbar';
-import { BottomNav } from './components/BottomNav';
 import { BackToTop } from './components/BackToTop';
 import { Footer } from './components/Footer';
 import { Splash } from './components/Splash';
@@ -18,6 +17,7 @@ const Reader = lazy(() => import('./pages/Reader').then(m => ({ default: m.Reade
 const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
 const Library = lazy(() => import('./pages/Library').then(m => ({ default: m.Library })));
 const Novels = lazy(() => import('./pages/Novels').then(m => ({ default: m.Novels })));
+const Notifications = lazy(() => import('./pages/Notifications').then(m => ({ default: m.Notifications })));
 
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ default: m.AdminLayout })));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
@@ -46,6 +46,7 @@ function MainSiteContainer() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/library" element={<Library />} />
             <Route path="/novels" element={<Novels />} />
+            <Route path="/notifications" element={<Notifications />} />
             <Route path="/manga" element={<Library />} />
             <Route path="/manhwa" element={<Library />} />
             <Route path="/search" element={<Library />} />
@@ -54,7 +55,6 @@ function MainSiteContainer() {
         </Suspense>
       </main>
       {!isReaderPage && <Footer />}
-      <BottomNav />
       <BackToTop />
     </div>
   );

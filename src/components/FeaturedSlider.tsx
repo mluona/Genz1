@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, PanInfo } from 'motion/react';
+import { motion, PanInfo, useMotionValue, animate } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Series } from '../types';
@@ -11,235 +11,170 @@ interface FeaturedSliderProps {
 
 export const FeaturedSlider: React.FC<FeaturedSliderProps> = ({ seriesList }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [direction, setDirection] = useState(0); // -1 for left/prev, 1 for right/next
   const [isHovered, setIsHovered] = useState(false);
   const autoPlayRef = useRef<(() => void) | null>(null);
+  const centerCardRef = useRef<HTMLDivElement | null>(null);
+  const wasDraggedRef = useRef(false);
+  const x = useMotionValue(0);
 
-  const length = seriesList.length;
-
-  const nextSlide = () => {
-    setDirection(1);
-    setCurrentIndex((prev) => (prev + 1) % length);
-  };
-
-  const prevSlide = () => {
-    setDirection(-1);
-    setCurrentIndex((prev) => (prev - 1 + length) % length);
-  };
+  const limitedSeries = React.useMemo(() => (seriesList || []).slice(0, 5), [seriesList]);
+  const length = limitedSeries.length;
 
   useEffect(() => {
-    autoPlayRef.current = nextSlide;
+    if (currentIndex >= length && length > 0) {
+      setCurrentIndex(0);
+    }
+  }, [currentIndex, length]);
+
+  const getStepPx = () => {
+    const cardWidth = centerCardRef.current?.offsetWidth || 250;
+    const gap = 16; // gap-4
+    return cardWidth + gap;
+  };
+
+  const slideBy = (delta: number) => {
+    if (length <= 1) return;
+    const stepPx = getStepPx();
+    const currentX = x.get();
+    setCurrentIndex((prev) => ((prev + delta) % length + length) % length);
+    x.set(currentX + delta * stepPx);
+    animate(x, 0, { type: 'spring', stiffness: 300, damping: 32 });
+  };
+
+  const nextSlide = () => slideBy(1);
+  const prevSlide = () => slideBy(-1);
+
+  useEffect(() => {
+    // Move right automatically every 3 seconds
+    autoPlayRef.current = prevSlide;
   });
 
   useEffect(() => {
     if (isHovered || length <= 1) return;
-    const play = () => {
+    const interval = setInterval(() => {
       if (autoPlayRef.current) autoPlayRef.current();
-    };
-    const interval = setInterval(play, 5000);
+    }, 3000);
     return () => clearInterval(interval);
   }, [isHovered, length]);
 
-  if (!seriesList || seriesList.length === 0) return null;
+  if (length === 0) return null;
 
-  const currentSeries = seriesList[currentIndex];
-
-  // Motion Variants for clean sliding transitions
-  const slideVariants: any = {
-    enter: (dir: number) => ({
-      x: dir > 0 ? -150 : 150,
-      opacity: 0,
-      scale: 0.98,
-    }),
-    center: {
-      x: 0,
-      opacity: 1,
-      scale: 1,
-      transition: {
-        x: { type: "spring" as const, stiffness: 240, damping: 28 },
-        opacity: { duration: 0.4 },
-        scale: { duration: 0.4, ease: "easeOut" }
-      }
-    },
-    exit: (dir: number) => ({
-      x: dir > 0 ? 150 : -150,
-      opacity: 0,
-      scale: 0.98,
-      transition: {
-        x: { type: "spring" as const, stiffness: 240, damping: 28 },
-        opacity: { duration: 0.3 }
-      }
-    })
+  const handleDragStart = () => {
+    wasDraggedRef.current = true;
   };
 
-  // Handle Drag / Swipe gestures
-  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    const swipeThreshold = 50;
-    if (info.offset.x > swipeThreshold) {
-      // Swiped right relative to the grid direction
-      prevSlide();
-    } else if (info.offset.x < -swipeThreshold) {
-      // Swiped left relative to the grid direction
+  const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const swipeThreshold = 45;
+    if (info.offset.x < -swipeThreshold && length > 1) {
       nextSlide();
+    } else if (info.offset.x > swipeThreshold && length > 1) {
+      prevSlide();
+    } else {
+      animate(x, 0, { type: 'spring', stiffness: 320, damping: 30 });
     }
+    setTimeout(() => {
+      wasDraggedRef.current = false;
+    }, 100);
   };
 
-  // Select the preferred scenic image to show (preferred: backgroundImage, fallback: coverImage)
-  const displayImage = currentSeries.backgroundImage || currentSeries.coverImage;
+  const offsets = length === 1 ? [0] : [-3, -2, -1, 0, 1, 2, 3];
+
+  const getSeriesAtOffset = (offset: number) => {
+    const idx = ((currentIndex + offset) % length + length) % length;
+    return limitedSeries[idx];
+  };
 
   return (
-    <div 
-      className="relative w-full max-w-7xl mx-auto px-4 md:px-0 h-[280px] sm:h-[350px] md:h-[450px] lg:h-[500px] overflow-hidden group select-none md:rounded-[2.5rem]"
+    <div
+      dir="ltr"
+      className="relative w-full overflow-hidden select-none py-1"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Immersive Cinematic Background Glow Filter */}
-      <div className="absolute inset-0 z-0 overflow-hidden bg-black">
-        <AnimatePresence mode="popLayout" initial={false}>
-          <motion.img
-            key={`bg-${currentSeries.id}`}
-            src={getProxiedImageUrl(displayImage)}
-            initial={{ opacity: 0, scale: 1.12 }}
-            animate={{ opacity: 0.35, scale: 1.05 }}
-            exit={{ opacity: 0, scale: 1.12 }}
-            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-            className="w-full h-full object-cover filter blur-[35px] pointer-events-none"
-            referrerPolicy="no-referrer"
-          />
-        </AnimatePresence>
-        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent z-10" />
-      </div>
+      {/* Centered Peek Carousel Track */}
+      <motion.div
+        style={{ x }}
+        drag={length > 1 ? 'x' : false}
+        dragConstraints={{ left: -260, right: 260 }}
+        dragElastic={0.25}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        className="flex items-center justify-center gap-4 cursor-grab active:cursor-grabbing"
+      >
+        {offsets.map((offset) => {
+          const item = getSeriesAtOffset(offset);
+          const isCenter = offset === 0;
+          const imgUrl = getProxiedImageUrl(item.coverImage || item.backgroundImage || '');
 
-      {/* Main Image Slider Interactivity Layer */}
-      <div className="absolute inset-0 z-20 flex items-center justify-center">
-        <AnimatePresence mode="popLayout" initial={false} custom={direction}>
-          <motion.div
-            key={currentSeries.id}
-            custom={direction}
-            variants={slideVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.4}
-            onDragEnd={handleDragEnd}
-            className="w-full h-full overflow-hidden cursor-grab active:cursor-grabbing p-2 sm:p-4"
-          >
-            <Link 
-              to={`/series/${currentSeries.slug}`}
-              className="block w-full h-full relative overflow-hidden rounded-[1.5rem] md:rounded-[2rem] border border-white/10 bg-zinc-950 group/link"
-              style={{
-                boxShadow: '0 30px 70px -10px rgba(0, 0, 0, 0.95), 0 0 50px rgba(16, 185, 129, 0.08)'
-              }}
+          return (
+            <div
+              key={offset}
+              ref={isCenter ? centerCardRef : undefined}
+              className="w-[62vw] max-w-[260px] sm:w-[260px] md:w-[290px] lg:w-[310px] aspect-[2/3] shrink-0"
             >
-              {/* Premium full-bleed cover / background image (high-quality resolution rendering) */}
-              <img
-                src={getProxiedImageUrl(displayImage)}
-                alt={currentSeries.title}
-                className="w-full h-full object-cover transition-transform duration-1000 ease-out group-hover/link:scale-[1.04]"
-                referrerPolicy="no-referrer"
-                style={{ imageRendering: 'auto' }}
-                draggable={false}
-              />
-              
-              {/* Ultra-smooth cinematic dark vignette gradient to protect text legibility */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent transition-opacity duration-300 group-hover/link:from-black/100" />
-              
-              {/* Minimal light sheen highlight */}
-              <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 pointer-events-none opacity-0 group-hover/link:opacity-100 transition-opacity duration-700" />
+              {isCenter ? (
+                <Link
+                  to={`/series/${item.slug}`}
+                  onClick={(e) => {
+                    if (wasDraggedRef.current) e.preventDefault();
+                  }}
+                  draggable={false}
+                  className="block w-full h-full rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 shadow-[0_14px_36px_rgba(0,0,0,0.65)] group"
+                >
+                  <img
+                    src={imgUrl}
+                    alt={item.title}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                    referrerPolicy="no-referrer"
+                    draggable={false}
+                  />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!wasDraggedRef.current) slideBy(offset);
+                  }}
+                  aria-label={item.title}
+                  className="block w-full h-full rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 shadow-[0_10px_28px_rgba(0,0,0,0.5)] opacity-90 hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  <img
+                    src={imgUrl}
+                    alt={item.title}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    draggable={false}
+                  />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </motion.div>
 
-              {/* Title & Metadata Overlay - Placed elegantly inside the bottom-right image boundaries */}
-              <div className="absolute bottom-6 right-6 left-6 md:bottom-12 md:right-12 md:left-12 z-20 text-right space-y-3 pointer-events-none">
-                {/* Visual Category Badge Grid */}
-                <div className="flex flex-wrap items-center gap-2" dir="rtl">
-                  {currentSeries.type && (
-                    <span className="px-2.5 py-0.5 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-wider rounded">
-                      {currentSeries.type === 'Novel' ? 'رواية مميزة' : currentSeries.type === 'Manga' ? 'مانجا مميزة' : 'عمل متميز'}
-                    </span>
-                  )}
-                  {currentSeries.status && (
-                    <span className="px-2.5 py-0.5 bg-white/10 backdrop-blur-md text-zinc-300 text-[10px] font-bold rounded">
-                      {currentSeries.status === 'Ongoing' ? 'مستمر' : 'مكتمل'}
-                    </span>
-                  )}
-                  {currentSeries.rating && (
-                    <span className="px-2.5 py-0.5 bg-zinc-950/60 backdrop-blur-md text-emerald-400 text-[10px] font-black rounded flex items-center gap-1 border border-emerald-550/10">
-                      ★ {currentSeries.rating.toFixed(1)}
-                    </span>
-                  )}
-                </div>
-
-                {/* Main Work Title */}
-                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight select-text drop-shadow-[0_4px_12px_rgba(0,0,0,0.95)] transition-transform duration-500 group-hover/link:translate-y-[-2px]">
-                  {currentSeries.title}
-                </h1>
-
-                {/* Author Name */}
-                {currentSeries.author && (
-                  <p className="text-zinc-300/95 text-xs sm:text-sm font-semibold tracking-wide drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] max-w-xl line-clamp-1">
-                    بواسطة / <span className="text-white font-bold">{currentSeries.author}</span>
-                  </p>
-                )}
-
-                {/* Short teaser caption inside image area */}
-                {currentSeries.description && (
-                  <p className="text-zinc-400/90 text-xs sm:text-sm leading-relaxed max-w-2xl line-clamp-2 md:line-clamp-3 select-text drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)] hidden sm:block">
-                    {currentSeries.description}
-                  </p>
-                )}
-              </div>
-            </Link>
-          </motion.div>
-        </AnimatePresence>
-      </div>
-
-      {/* Slide Navigation Buttons (hidden on mobile, visible on desktop hover) */}
-      <div 
-        className="absolute top-1/2 -translate-y-1/2 left-6 z-30 transition-all duration-300 transform translate-x-3 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 hidden md:block"
-        dir="ltr"
-      >
-        <button 
-          onClick={prevSlide}
-          className="p-3.5 bg-zinc-950/80 hover:bg-emerald-500 text-white hover:text-black hover:scale-110 active:scale-95 rounded-2xl border border-white/5 transition-all shadow-2xl"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-      </div>
-      
-      <div 
-        className="absolute top-1/2 -translate-y-1/2 right-6 z-30 transition-all duration-300 transform -translate-x-3 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 hidden md:block"
-        dir="ltr"
-      >
-        <button 
-          onClick={nextSlide}
-          className="p-3.5 bg-zinc-950/80 hover:bg-emerald-500 text-white hover:text-black hover:scale-110 active:scale-95 rounded-2xl border border-white/5 transition-all shadow-2xl"
-        >
-          <ChevronRight className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Elegant Dot Indicators */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-35 flex items-center gap-1.5 bg-zinc-950/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/5">
-        {seriesList.map((_, index) => (
+      {/* Circular Left / Right Navigation Buttons */}
+      {length > 1 && (
+        <>
           <button
-            key={index}
-            onClick={() => {
-              setDirection(index > currentIndex ? 1 : -1);
-              setCurrentIndex(index);
-            }}
-            className="py-1 px-1 focus:outline-none transition-all"
+            type="button"
+            onClick={prevSlide}
+            aria-label="السابق"
+            className="absolute left-3 sm:left-6 md:left-10 top-1/2 -translate-y-1/2 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-zinc-900/85 hover:bg-zinc-800 backdrop-blur-md text-white border border-white/15 shadow-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer"
           >
-            <div 
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                index === currentIndex 
-                  ? 'w-5 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' 
-                  : 'w-1.5 bg-white/30 hover:bg-white/60'
-              }`}
-            />
+            <ChevronLeft className="w-5 h-5" />
           </button>
-        ))}
-      </div>
+
+          <button
+            type="button"
+            onClick={nextSlide}
+            aria-label="التالي"
+            className="absolute right-3 sm:right-6 md:right-10 top-1/2 -translate-y-1/2 z-30 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-zinc-900/85 hover:bg-zinc-800 backdrop-blur-md text-white border border-white/15 shadow-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </>
+      )}
     </div>
   );
 };
+
