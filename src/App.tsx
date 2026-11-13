@@ -1,5 +1,7 @@
-import React, { useState, Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -60,6 +62,31 @@ function MainSiteContainer() {
   );
 }
 
+function AndroidBackHandler() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const listenerPromise = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+      if (location.pathname !== '/' && canGoBack) {
+        navigate(-1);
+      } else if (location.pathname !== '/') {
+        navigate('/');
+      } else {
+        CapacitorApp.exitApp();
+      }
+    });
+
+    return () => {
+      listenerPromise.then((handle) => handle.remove()).catch(() => {});
+    };
+  }, [location.pathname, navigate]);
+
+  return null;
+}
+
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
 
@@ -72,6 +99,7 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <Router>
+            <AndroidBackHandler />
             <ScrollToTop />
             <TrafficTracker />
             <div dir="rtl" className="min-h-screen overflow-x-hidden bg-zinc-950 text-white font-sans selection:bg-emerald-500/30 selection:text-emerald-200 transition-colors duration-300">

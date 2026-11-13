@@ -1,0 +1,178 @@
+import { c as createLucideIcon, r as reactExports, y as supabase, w as jsxRuntimeExports, a7 as ShieldAlert } from "./index-BNptM8td.js";
+import { T as Trash2 } from "./trash-2-C0MAntLE.js";
+import { M as MessageSquare } from "./message-square-Cu1hVUrS.js";
+import { f as formatDistanceToNow } from "./formatDistanceToNow-K3QoIsIe.js";
+/**
+ * @license lucide-react v0.546.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode = [
+  [
+    "path",
+    {
+      d: "M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528",
+      key: "1jaruq"
+    }
+  ]
+];
+const Flag = createLucideIcon("flag", __iconNode);
+const CommentModeration = () => {
+  const [comments, setComments] = reactExports.useState([]);
+  const [filter, setFilter] = reactExports.useState("all");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = reactExports.useState(false);
+  const [commentToDelete, setCommentToDelete] = reactExports.useState(null);
+  const fetchComments = async () => {
+    try {
+      let query = supabase.from("comments").select("*").order("timestamp", { ascending: false });
+      if (filter === "flagged") {
+        query = query.eq("isFlagged", true);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      setComments(data || []);
+    } catch (error) {
+      console.error("Error fetching comments:", error);
+    }
+  };
+  reactExports.useEffect(() => {
+    fetchComments();
+    const channel = supabase.channel("comment_moderation_changes").on("postgres_changes", { event: "*", schema: "public", table: "comments" }, () => {
+      fetchComments();
+    }).subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [filter]);
+  const handleDelete = async () => {
+    if (commentToDelete) {
+      try {
+        const { error } = await supabase.from("comments").delete().eq("id", commentToDelete);
+        if (error) throw error;
+        setIsDeleteModalOpen(false);
+        setCommentToDelete(null);
+      } catch (error) {
+        console.error("Error deleting comment:", error);
+      }
+    }
+  };
+  const handleToggleFlag = async (id, currentStatus) => {
+    try {
+      const { error } = await supabase.from("comments").update({ isFlagged: !currentStatus }).eq("id", id);
+      if (error) throw error;
+    } catch (error) {
+      console.error("Error toggling flag:", error);
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-8", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-3xl font-black tracking-tight", children: "Comment Moderation" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-zinc-500 font-medium", children: "Monitor and moderate user discussions across the site." })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-6 border-b border-zinc-100 flex items-center justify-between", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-black uppercase tracking-tight", children: "Recent Comments" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              onClick: () => setFilter("all"),
+              className: `px-4 py-2 text-xs font-bold rounded-xl transition-colors ${filter === "all" ? "bg-zinc-800 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`,
+              children: "All"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              onClick: () => setFilter("flagged"),
+              className: `px-4 py-2 text-xs font-bold rounded-xl transition-colors ${filter === "flagged" ? "bg-red-500 text-white" : "bg-red-50 text-red-600 hover:bg-red-100"}`,
+              children: "Flagged"
+            }
+          )
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "divide-y divide-zinc-100", children: [
+        comments.map((comment) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `p-6 flex gap-4 hover:bg-zinc-50 transition-colors ${comment.isFlagged ? "bg-red-50/30" : ""}`, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: comment.userAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.userId}`, className: "w-10 h-10 rounded-full flex-shrink-0", alt: "", referrerPolicy: "no-referrer" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 space-y-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-bold", children: comment.username }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] font-bold text-zinc-400 uppercase tracking-widest", children: comment.timestamp ? formatDistanceToNow(new Date(comment.timestamp), { addSuffix: true }) : "Just now" }),
+                comment.isFlagged && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-600 text-[8px] font-black uppercase tracking-widest rounded-full", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(ShieldAlert, { className: "w-2 h-2" }),
+                  " Flagged"
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    onClick: () => handleToggleFlag(comment.id, !!comment.isFlagged),
+                    className: `p-2 rounded-lg transition-colors ${comment.isFlagged ? "text-red-500 bg-red-50" : "text-zinc-400 hover:text-red-500 hover:bg-red-50"}`,
+                    title: comment.isFlagged ? "Unflag" : "Flag",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Flag, { className: "w-4 h-4" })
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    onClick: () => {
+                      setCommentToDelete(comment.id);
+                      setIsDeleteModalOpen(true);
+                    },
+                    className: "p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors",
+                    title: "Delete",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "w-4 h-4" })
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-zinc-600 leading-relaxed", children: comment.text }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4 text-[10px] font-bold text-zinc-400 uppercase tracking-widest", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { className: "w-3 h-3" }),
+                " Series: ",
+                comment.seriesId
+              ] }),
+              comment.chapterId && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                "Chapter: ",
+                comment.chapterId
+              ] })
+            ] })
+          ] })
+        ] }, comment.id)),
+        comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-20 text-center text-zinc-400 font-bold", children: "No comments found." })
+      ] })
+    ] }),
+    isDeleteModalOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-8 text-center space-y-6", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "w-8 h-8" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-black uppercase tracking-tight", children: "Delete Comment?" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-zinc-500 text-sm font-medium mt-2", children: "This action cannot be undone. The comment will be permanently removed." })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: () => setIsDeleteModalOpen(false),
+            className: "flex-1 py-3 text-zinc-500 font-bold hover:bg-zinc-100 rounded-xl transition-colors",
+            children: "Cancel"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: handleDelete,
+            className: "flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors",
+            children: "Delete"
+          }
+        )
+      ] })
+    ] }) })
+  ] });
+};
+export {
+  CommentModeration
+};

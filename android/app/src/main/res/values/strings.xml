@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GENZ</string>
+    <string name="title_activity_main">GENZ</string>
+    <string name="package_name">com.genz.reader</string>
+    <string name="custom_url_scheme">com.genz.reader</string>
+</resources>

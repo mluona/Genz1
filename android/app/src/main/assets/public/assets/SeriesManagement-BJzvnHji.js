@@ -1,0 +1,967 @@
+import { r as reactExports, y as supabase, w as jsxRuntimeExports, G as Search, L as Link, X, a0 as LoaderCircle, A as AnimatePresence, x as motion } from "./index-BNptM8td.js";
+import { F as FileArchive, E as ExternalLink, U as Upload, c as compressImage, J as JSZip, s as splitAndCompressImage } from "./jszip.min-Dm3A7SKb.js";
+import { u as uploadToLocal } from "./localUpload-DN0fFoi0.js";
+import { g as getProxiedImageUrl } from "./imageUtils-CO4tJ9Ml.js";
+import { P as Plus } from "./plus-BsfOAGru.js";
+import { B as BookOpen } from "./book-open-B8xp784j.js";
+import { P as Pen } from "./pen-mIybmmv0.js";
+import { T as Trash2 } from "./trash-2-C0MAntLE.js";
+const GENRE_MAP = {
+  "Action": "أكشن",
+  "Adventure": "مغامرة",
+  "Comedy": "كوميدي",
+  "Drama": "دراما",
+  "Fantasy": "خيالي",
+  "Horror": "رعب",
+  "Mystery": "غموض",
+  "Psychological": "نفسي",
+  "Romance": "رومانسي",
+  "Sci-Fi": "خيال علمي",
+  "Slice of Life": "شريحة من الحياة",
+  "Sports": "رياضي",
+  "Supernatural": "قوى خارقة",
+  "Thriller": "إثارة",
+  "Chinese": "صينية",
+  "Korean": "كورية",
+  "Japanese": "يابانية",
+  "Magic": "سحر",
+  "Time Travel": "إعادة زمن",
+  "Isekai": "ايسكاي",
+  "Martial Arts": "فنون قتالية",
+  "Reincarnation": "إعادة تجسيد",
+  "Cultivation": "زراعة قوى",
+  "Video Games": "ألعاب فيديو",
+  "Leveling": "تطوير المستوى",
+  "System": "نظام",
+  "Academy": "أكاديمية",
+  "Tower": "برج",
+  "Dungeons": "دهاليز"
+};
+const GENRES = [
+  "أكشن",
+  "مغامرة",
+  "كوميدي",
+  "دراما",
+  "خيالي",
+  "رعب",
+  "غموض",
+  "نفسي",
+  "رومانسي",
+  "خيال علمي",
+  "شريحة من الحياة",
+  "رياضي",
+  "قوى خارقة",
+  "إثارة",
+  "صينية",
+  "كورية",
+  "يابانية",
+  "سحر",
+  "إعادة زمن",
+  "ايسكاي",
+  "فنون قتالية",
+  "إعادة تجسيد",
+  "زراعة قوى",
+  "ألعاب فيديو",
+  "تطوير المستوى",
+  "نظام",
+  "أكاديمية",
+  "برج",
+  "دهاليز"
+];
+const SeriesManagement = () => {
+  const [seriesList, setSeriesList] = reactExports.useState([]);
+  const [searchTerm, setSearchTerm] = reactExports.useState("");
+  const [typeFilter, setTypeFilter] = reactExports.useState("all");
+  const [isModalOpen, setIsModalOpen] = reactExports.useState(false);
+  const [editingSeries, setEditingSeries] = reactExports.useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = reactExports.useState(false);
+  const [seriesToDelete, setSeriesToDelete] = reactExports.useState(null);
+  const [isUploading, setIsUploading] = reactExports.useState(false);
+  const [uploadingField, setUploadingField] = reactExports.useState(null);
+  const [uploadProgress, setUploadProgress] = reactExports.useState(0);
+  const [isDraggingCover, setIsDraggingCover] = reactExports.useState(false);
+  const [isDraggingBg, setIsDraggingBg] = reactExports.useState(false);
+  const [isSmartImportModalOpen, setIsSmartImportModalOpen] = reactExports.useState(false);
+  const [isSmartImporting, setIsSmartImporting] = reactExports.useState(false);
+  const [smartImportLog, setSmartImportLog] = reactExports.useState([]);
+  const smartZipInputRef = reactExports.useRef(null);
+  const cancelImportRef = reactExports.useRef(false);
+  const [isSmartImportMode, setIsSmartImportMode] = reactExports.useState(false);
+  const [smartImportFile, setSmartImportFile] = reactExports.useState(null);
+  const [formData, setFormData] = reactExports.useState({
+    title: "",
+    description: "",
+    coverImage: "",
+    backgroundImage: "",
+    status: "Ongoing",
+    type: "Novel",
+    genres: [],
+    tags: [],
+    author: "",
+    artist: "",
+    releaseYear: (/* @__PURE__ */ new Date()).getFullYear(),
+    slug: ""
+  });
+  reactExports.useEffect(() => {
+    const fetchSeries = async () => {
+      const { data, error } = await supabase.from("series").select("*").order("lastUpdated", { ascending: false });
+      if (error) {
+        console.error("Error fetching series:", error);
+        return;
+      }
+      setSeriesList(data || []);
+    };
+    fetchSeries();
+    const channel = supabase.channel("series_admin_changes").on("postgres_changes", { event: "*", schema: "public", table: "series" }, () => {
+      fetchSeries();
+    }).subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+  const handleFileUpload = async (e, field = "coverImage") => {
+    var _a;
+    const file = (_a = e.target.files) == null ? void 0 : _a[0];
+    if (!file) return;
+    setIsUploading(true);
+    setUploadingField(field);
+    setUploadProgress(0);
+    try {
+      const base64Image = await compressImage(file, 0.9);
+      const mimeTypeMatch = base64Image.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : file.type;
+      const filename = `series/${Date.now()}-${field}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const localUrl = await uploadToLocal(base64Image, filename, mimeType, (progress) => {
+        setUploadProgress(progress);
+      });
+      if (!localUrl) throw new Error("Failed to get uploaded file URL");
+      setFormData((prev) => ({ ...prev, [field]: localUrl }));
+      setUploadProgress(100);
+      if (editingSeries) {
+        const { error } = await supabase.from("series").update({
+          [field]: localUrl,
+          lastUpdated: editingSeries.lastUpdated || (/* @__PURE__ */ new Date()).toISOString()
+        }).eq("id", editingSeries.id);
+        if (error) throw error;
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+      alert(`Upload failed: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+      setUploadingField(null);
+      setTimeout(() => setUploadProgress(0), 1e3);
+    }
+  };
+  const filteredSeries = seriesList.filter((s) => {
+    var _a;
+    const matchesSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) || ((_a = s.author) == null ? void 0 : _a.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesType = typeFilter === "all" || s.type === typeFilter;
+    return matchesSearch && matchesType;
+  });
+  const generateSlug = async (title) => {
+    let slugTitle = title;
+    const arabicRegex = /[\u0600-\u06FF]/;
+    if (arabicRegex.test(title)) {
+      try {
+        const response = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: title, target: "English" })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.translatedText) {
+            slugTitle = data.translatedText;
+          }
+        }
+      } catch (error) {
+        console.error("Translation failed:", error);
+      }
+    }
+    return slugTitle.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
+  };
+  const handleSingleSeriesSmartImport = async () => {
+    if (!smartImportFile) return;
+    setIsSmartImportModalOpen(true);
+    setIsSmartImporting(true);
+    cancelImportRef.current = false;
+    setSmartImportLog([{ message: `Starting Smart Import for ${formData.title}...`, type: "info", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+    try {
+      const zip = new JSZip();
+      const contents = await zip.loadAsync(smartImportFile);
+      const imageFiles = Object.keys(contents.files).filter((name) => !contents.files[name].dir && /\.(jpe?g|png|gif|webp|avif|bmp|tiff?|jfif|svg)$/i.test(name)).sort((a, b) => a.localeCompare(b, void 0, { numeric: true, sensitivity: "base" }));
+      if (imageFiles.length === 0) {
+        setSmartImportLog((prev) => [...prev, { message: `Error: No images found in ZIP.`, type: "error", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+        setIsSmartImporting(false);
+        return;
+      }
+      setSmartImportLog((prev) => [...prev, { message: `Found ${imageFiles.length} images. Parsing chapters...`, type: "info", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+      const chaptersObj = {};
+      for (const path of imageFiles) {
+        const parts = path.split("/").filter(Boolean);
+        const filename = parts.pop();
+        let chapterStr = "1";
+        let foundChapter = false;
+        for (const part of parts) {
+          const match = part.match(/(?:chapter|ch|chap|ep|episode)\s*(\d+(\.\d+)?)/i) || part.match(/^(\d+(\.\d+)?)$/);
+          if (match) {
+            chapterStr = match[1];
+            foundChapter = true;
+            break;
+          }
+        }
+        if (!foundChapter && parts.length > 0) {
+          const lastFolder = parts[parts.length - 1];
+          const match = lastFolder.match(/(\d+(\.\d+)?)/);
+          if (match) chapterStr = match[1];
+        }
+        if (!chaptersObj[chapterStr]) chaptersObj[chapterStr] = [];
+        chaptersObj[chapterStr].push(path);
+      }
+      const seriesName = formData.title;
+      let seriesId = "";
+      const existingSeries = seriesList.find((s) => s.title.toLowerCase() === seriesName.toLowerCase());
+      const slug = formData.slug || await generateSlug(seriesName);
+      const seriesData = {
+        ...formData,
+        slug,
+        rating: (existingSeries == null ? void 0 : existingSeries.rating) || 5,
+        ratingCount: (existingSeries == null ? void 0 : existingSeries.ratingCount) || 1,
+        views: (existingSeries == null ? void 0 : existingSeries.views) || 0,
+        dailyViews: (existingSeries == null ? void 0 : existingSeries.dailyViews) || 0,
+        weeklyViews: (existingSeries == null ? void 0 : existingSeries.weeklyViews) || 0,
+        monthlyViews: (existingSeries == null ? void 0 : existingSeries.monthlyViews) || 0,
+        lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      if (existingSeries) {
+        seriesId = existingSeries.id;
+        setSmartImportLog((prev) => [...prev, { message: `Updating existing series: ${seriesName}`, type: "success", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+        const { error } = await supabase.from("series").update(seriesData).eq("id", seriesId);
+        if (error) throw error;
+      } else {
+        setSmartImportLog((prev) => [...prev, { message: `Creating new series: ${seriesName}`, type: "info", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+        const { data, error } = await supabase.from("series").insert([{ ...seriesData, createdAt: (/* @__PURE__ */ new Date()).toISOString() }]).select().single();
+        if (error) throw error;
+        seriesId = data.id;
+      }
+      for (const [chapterStr, paths] of Object.entries(chaptersObj)) {
+        if (cancelImportRef.current) throw new Error("Import cancelled by user.");
+        const chapterNumber = parseFloat(chapterStr) || 1;
+        setSmartImportLog((prev) => [...prev, { message: `Processing Chapter ${chapterNumber} (${paths.length} pages)...`, type: "info", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+        const { data: existingChapters } = await supabase.from("chapters").select("*").eq("seriesId", seriesId).eq("chapterNumber", chapterNumber);
+        const existingChapter = existingChapters == null ? void 0 : existingChapters[0];
+        let chapterId = "";
+        if (existingChapter) {
+          chapterId = existingChapter.id;
+          setSmartImportLog((prev) => [...prev, { message: `Updating existing Chapter ${chapterNumber}`, type: "warning", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+        } else {
+          const { data: chapData, error: chapError } = await supabase.from("chapters").insert([{
+            seriesId,
+            chapterNumber,
+            title: `Chapter ${chapterNumber}`,
+            content: [],
+            publishDate: (/* @__PURE__ */ new Date()).toISOString(),
+            views: 0,
+            pageCount: paths.length
+          }]).select().single();
+          if (chapError) throw chapError;
+          chapterId = chapData.id;
+        }
+        setSmartImportLog((prev) => [...prev, { message: `Compressing and uploading pages...`, type: "info", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+        if (existingChapter) {
+          const { error: deleteError } = await supabase.from("pages").delete().eq("chapterId", chapterId);
+          if (deleteError) throw deleteError;
+        }
+        let pageIndex = 0;
+        const uploadedUrls = [];
+        let useLocalUpload = true;
+        for (const path of paths) {
+          if (cancelImportRef.current) throw new Error("Import cancelled by user.");
+          const blob = await contents.files[path].async("blob");
+          const file = new File([blob], path.split("/").pop(), { type: blob.type });
+          try {
+            const base64Images = await splitAndCompressImage(file, 0.9);
+            for (const base64 of base64Images) {
+              const pageId = `page_${pageIndex.toString().padStart(4, "0")}`;
+              const mimeTypeMatch = base64.match(/^data:(image\/[a-zA-Z+]+);base64,/);
+              const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+              if (useLocalUpload) {
+                try {
+                  const localUrl = await uploadToLocal(base64, `${seriesId}/${chapterId}/${pageId}.jpg`, mimeType);
+                  if (localUrl) uploadedUrls.push(localUrl);
+                } catch (uploadErr) {
+                  useLocalUpload = false;
+                  setSmartImportLog((prev) => [...prev, { message: `Local upload failed: ${uploadErr.message}. Falling back to inline database storage.`, type: "warning", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+                }
+              }
+              if (!useLocalUpload) {
+                const { error: pageError } = await supabase.from("pages").insert([{
+                  chapterId,
+                  pageNumber: pageIndex,
+                  content: base64
+                }]);
+                if (pageError) throw pageError;
+              }
+              pageIndex++;
+            }
+          } catch (err) {
+            setSmartImportLog((prev) => [...prev, { message: `Error compressing ${file.name}: ${err.message}`, type: "error", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+          }
+        }
+        const updateData = { pageCount: pageIndex };
+        if (useLocalUpload && uploadedUrls.length > 0) {
+          updateData.content = uploadedUrls;
+          updateData.pageCount = uploadedUrls.length;
+        }
+        const { error: finalChapError } = await supabase.from("chapters").update(updateData).eq("id", chapterId);
+        if (finalChapError) throw finalChapError;
+        setSmartImportLog((prev) => [...prev, { message: `Chapter ${chapterNumber} completed.`, type: "success", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+      }
+      await supabase.from("series").update({ lastUpdated: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", seriesId);
+      setSmartImportLog((prev) => [...prev, { message: `Smart Import completed successfully!`, type: "success", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+    } catch (err) {
+      setSmartImportLog((prev) => [...prev, { message: `CRITICAL ERROR: ${err.message}`, type: "error", timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString() }]);
+    } finally {
+      setIsSmartImporting(false);
+      setSmartImportFile(null);
+      setFormData({
+        title: "",
+        description: "",
+        coverImage: "",
+        backgroundImage: "",
+        status: "Ongoing",
+        type: "Novel",
+        genres: [],
+        tags: [],
+        author: "",
+        artist: "",
+        releaseYear: (/* @__PURE__ */ new Date()).getFullYear(),
+        slug: ""
+      });
+    }
+  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isSmartImportMode && smartImportFile) {
+      setIsModalOpen(false);
+      await handleSingleSeriesSmartImport();
+      return;
+    }
+    if (!formData.coverImage) {
+      alert("Please upload a cover image before saving the series.");
+      return;
+    }
+    const slug = formData.slug || await generateSlug(formData.title);
+    const data = {
+      ...formData,
+      slug,
+      rating: (editingSeries == null ? void 0 : editingSeries.rating) || 0,
+      ratingCount: (editingSeries == null ? void 0 : editingSeries.ratingCount) || 0,
+      views: (editingSeries == null ? void 0 : editingSeries.views) || 0,
+      dailyViews: (editingSeries == null ? void 0 : editingSeries.dailyViews) || 0,
+      weeklyViews: (editingSeries == null ? void 0 : editingSeries.weeklyViews) || 0,
+      monthlyViews: (editingSeries == null ? void 0 : editingSeries.monthlyViews) || 0,
+      lastUpdated: editingSeries ? editingSeries.lastUpdated || (/* @__PURE__ */ new Date()).toISOString() : (/* @__PURE__ */ new Date()).toISOString()
+    };
+    try {
+      if (editingSeries) {
+        const { error } = await supabase.from("series").update(data).eq("id", editingSeries.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("series").insert([{ ...data, createdAt: (/* @__PURE__ */ new Date()).toISOString() }]);
+        if (error) throw error;
+      }
+      setIsModalOpen(false);
+      setEditingSeries(null);
+      setFormData({
+        title: "",
+        description: "",
+        coverImage: "",
+        backgroundImage: "",
+        status: "Ongoing",
+        type: "Novel",
+        genres: [],
+        tags: [],
+        author: "",
+        artist: "",
+        releaseYear: (/* @__PURE__ */ new Date()).getFullYear(),
+        slug: ""
+      });
+    } catch (error) {
+      console.error("Error saving series:", error);
+      let errorMessage = error.message || "Failed to save series";
+      if (errorMessage === "Failed to fetch" || errorMessage.includes("Failed to fetch")) {
+        errorMessage = "Network Error: Could not connect to the database. Please ensure your Supabase URL / API Keys are correctly configured in AI Studio Secrets, and that you have an internet connection.";
+      }
+      alert(errorMessage);
+    }
+  };
+  const handleDelete = async (id) => {
+    setSeriesToDelete(id);
+    setIsDeleteModalOpen(true);
+  };
+  const confirmDelete = async () => {
+    if (seriesToDelete) {
+      try {
+        const { error } = await supabase.from("series").delete().eq("id", seriesToDelete);
+        if (error) throw error;
+        setIsDeleteModalOpen(false);
+        setSeriesToDelete(null);
+      } catch (error) {
+        console.error("Error deleting series:", error);
+        alert("Failed to delete series.");
+      }
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-8", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col md:flex-row md:items-center justify-between gap-6", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-3xl font-black tracking-tight", children: "Series Management" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-zinc-500 font-medium", children: "Add, edit, and manage all reading works on GENZ." })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col sm:flex-row gap-4 w-full md:w-auto", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative w-full sm:w-auto", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { className: "absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "text",
+              placeholder: "Search series...",
+              value: searchTerm,
+              onChange: (e) => setSearchTerm(e.target.value),
+              className: "w-full sm:w-64 bg-white border border-zinc-200 rounded-2xl py-2.5 pl-10 pr-4 text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            onClick: () => {
+              setEditingSeries(null);
+              setFormData({
+                title: "",
+                description: "",
+                coverImage: "",
+                backgroundImage: "",
+                status: "Ongoing",
+                type: "Novel",
+                genres: [],
+                tags: [],
+                author: "",
+                artist: "",
+                releaseYear: (/* @__PURE__ */ new Date()).getFullYear(),
+                slug: ""
+              });
+              setIsSmartImportMode(false);
+              setSmartImportFile(null);
+              setIsModalOpen(true);
+            },
+            className: "flex items-center justify-center gap-2 px-6 py-3 bg-emerald-500 text-black font-bold rounded-2xl hover:bg-emerald-400 transition-colors w-full sm:w-auto whitespace-nowrap",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { className: "w-5 h-5" }),
+              " Add New Series"
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            onClick: () => {
+              setEditingSeries(null);
+              setFormData({
+                title: "",
+                description: "",
+                coverImage: "",
+                backgroundImage: "",
+                status: "Ongoing",
+                type: "Novel",
+                genres: [],
+                tags: [],
+                author: "",
+                artist: "",
+                releaseYear: (/* @__PURE__ */ new Date()).getFullYear(),
+                slug: ""
+              });
+              setIsSmartImportMode(true);
+              setSmartImportFile(null);
+              setIsModalOpen(true);
+            },
+            className: "flex items-center justify-center gap-2 px-6 py-3 bg-zinc-900 text-white font-bold rounded-2xl hover:bg-zinc-800 transition-colors w-full sm:w-auto whitespace-nowrap",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(FileArchive, { className: "w-5 h-5" }),
+              " Smart Bulk Import"
+            ]
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-x-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("table", { className: "w-full text-left border-collapse min-w-[700px]", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("thead", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { className: "bg-zinc-50 border-b border-zinc-200", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500", children: "Series" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500", children: "Status" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500", children: "Views" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "px-6 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500", children: "Actions" })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("tbody", { className: "divide-y divide-zinc-100", children: filteredSeries.map((series) => /* @__PURE__ */ jsxRuntimeExports.jsxs("tr", { className: "hover:bg-zinc-50 transition-colors", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-6 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: getProxiedImageUrl(series.coverImage), className: "w-10 h-14 object-cover rounded-lg", alt: "", referrerPolicy: "no-referrer" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-bold", children: series.title }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-zinc-500", children: series.author })
+          ] })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-6 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${series.status === "Ongoing" ? "bg-emerald-100 text-emerald-600" : "bg-blue-100 text-blue-600"}`, children: series.status }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-6 py-4 text-sm font-bold", children: series.views.toLocaleString() }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "px-6 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Link,
+            {
+              to: `/series/${series.slug}`,
+              target: "_blank",
+              className: "p-2 text-zinc-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors",
+              title: "View on Site",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ExternalLink, { className: "w-4 h-4" })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            Link,
+            {
+              to: `/admin/chapters?seriesId=${series.id}`,
+              className: "p-2 text-zinc-400 hover:text-purple-500 hover:bg-purple-50 rounded-lg transition-colors",
+              title: "Manage Chapters",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { className: "w-4 h-4" })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              onClick: () => {
+                setEditingSeries(series);
+                setFormData({
+                  ...series,
+                  backgroundImage: series.backgroundImage || "",
+                  genres: (series.genres || []).map((g) => GENRE_MAP[g] || g)
+                });
+                setIsModalOpen(true);
+              },
+              className: "p-2 text-zinc-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors",
+              title: "Edit Series",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pen, { className: "w-4 h-4" })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              onClick: () => handleDelete(series.id),
+              className: "p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors",
+              title: "Delete Series",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "w-4 h-4" })
+            }
+          )
+        ] }) })
+      ] }, series.id)) })
+    ] }) }),
+    isModalOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-[2.5rem] shadow-2xl", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-4 sm:p-8 border-b border-zinc-100 flex items-center justify-between sticky top-0 bg-white z-10", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl sm:text-2xl font-black uppercase tracking-tight", children: isSmartImportMode ? "Smart Bulk Import Series" : editingSeries ? "Edit Series" : "Add New Series" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setIsModalOpen(false), className: "p-2 text-zinc-400 hover:bg-zinc-100 rounded-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "w-6 h-6" }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { onSubmit: handleSubmit, className: "p-4 sm:p-8 space-y-8", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid md:grid-cols-2 gap-8", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Title" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "text",
+                  required: true,
+                  value: formData.title,
+                  onChange: (e) => {
+                    const title = e.target.value;
+                    setFormData({
+                      ...formData,
+                      title
+                    });
+                  },
+                  className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Slug" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "text",
+                  value: formData.slug,
+                  onChange: (e) => setFormData({ ...formData, slug: e.target.value }),
+                  className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Status" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "select",
+                {
+                  value: formData.status,
+                  onChange: (e) => setFormData({ ...formData, status: e.target.value }),
+                  className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 outline-none",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "Ongoing", children: "Ongoing" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "Completed", children: "Completed" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "Hiatus", children: "Hiatus" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "Dropped", children: "Dropped" })
+                  ]
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Description" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "textarea",
+                {
+                  rows: 4,
+                  value: formData.description,
+                  onChange: (e) => setFormData({ ...formData, description: e.target.value }),
+                  className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-emerald-500/20 outline-none resize-none"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "التصنيفات" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-2", children: GENRES.map((genre) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    const newGenres = formData.genres.includes(genre) ? formData.genres.filter((g) => g !== genre) : [...formData.genres, genre];
+                    setFormData({ ...formData, genres: newGenres });
+                  },
+                  className: `px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${formData.genres.includes(genre) ? "bg-emerald-500 text-black" : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"}`,
+                  children: genre
+                },
+                genre
+              )) })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Cover Image" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-col gap-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "div",
+                {
+                  onDragOver: (e) => {
+                    e.preventDefault();
+                    setIsDraggingCover(true);
+                  },
+                  onDragLeave: (e) => {
+                    e.preventDefault();
+                    setIsDraggingCover(false);
+                  },
+                  onDrop: async (e) => {
+                    var _a;
+                    e.preventDefault();
+                    setIsDraggingCover(false);
+                    const file = (_a = e.dataTransfer.files) == null ? void 0 : _a[0];
+                    if (file && file.type.startsWith("image/")) {
+                      const simulatedEvent = { target: { files: [file] } };
+                      handleFileUpload(simulatedEvent, "coverImage");
+                    }
+                  },
+                  className: `relative border-2 border-dashed rounded-3xl p-6 transition-all duration-300 text-center ${isDraggingCover ? "border-emerald-500 bg-emerald-50/20" : "border-zinc-200 bg-zinc-50 hover:bg-zinc-100/50 hover:border-zinc-300"}`,
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "file",
+                        id: "cover-upload-input",
+                        className: "hidden",
+                        accept: "image/*",
+                        disabled: isUploading,
+                        onChange: (e) => handleFileUpload(e, "coverImage")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { htmlFor: "cover-upload-input", className: "cursor-pointer flex flex-col items-center justify-center gap-2", children: [
+                      isUploading && uploadingField === "coverImage" ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "w-8 h-8 text-emerald-500 animate-spin" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Upload, { className: "w-8 h-8 text-zinc-400 group-hover:text-emerald-500 transition-colors" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-bold text-zinc-700", children: "اسحب صورة الغلاف وأفلتها هنا، أو اضغط للتصفح" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] text-zinc-400 font-medium", children: "JPEG, PNG, WEBP (بحد أقصى 5 ميجابايت)" })
+                      ] })
+                    ] })
+                  ]
+                }
+              ) }),
+              formData.coverImage && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative mt-4 w-32 h-44 group", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: getProxiedImageUrl(formData.coverImage), className: "w-full h-full object-cover rounded-2xl border border-zinc-200 shadow-lg", alt: "Preview", referrerPolicy: "no-referrer" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => setFormData({ ...formData, coverImage: "" }),
+                    className: "absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "w-4 h-4" })
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Background Image (Optional)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-col gap-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "div",
+                {
+                  onDragOver: (e) => {
+                    e.preventDefault();
+                    setIsDraggingBg(true);
+                  },
+                  onDragLeave: (e) => {
+                    e.preventDefault();
+                    setIsDraggingBg(false);
+                  },
+                  onDrop: async (e) => {
+                    var _a;
+                    e.preventDefault();
+                    setIsDraggingBg(false);
+                    const file = (_a = e.dataTransfer.files) == null ? void 0 : _a[0];
+                    if (file && file.type.startsWith("image/")) {
+                      const simulatedEvent = { target: { files: [file] } };
+                      handleFileUpload(simulatedEvent, "backgroundImage");
+                    }
+                  },
+                  className: `relative border-2 border-dashed rounded-3xl p-6 transition-all duration-300 text-center ${isDraggingBg ? "border-emerald-500 bg-emerald-50/20" : "border-zinc-200 bg-zinc-50 hover:bg-zinc-100/50 hover:border-zinc-300"}`,
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        type: "file",
+                        id: "bg-upload-input",
+                        className: "hidden",
+                        accept: "image/*",
+                        disabled: isUploading,
+                        onChange: (e) => handleFileUpload(e, "backgroundImage")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { htmlFor: "bg-upload-input", className: "cursor-pointer flex flex-col items-center justify-center gap-2", children: [
+                      isUploading && uploadingField === "backgroundImage" ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "w-8 h-8 text-emerald-500 animate-spin" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Upload, { className: "w-8 h-8 text-zinc-400 group-hover:text-emerald-500 transition-colors" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-bold text-zinc-700", children: "اسحب صورة الخلفية وأفلتها هنا، أو اضغط للتصفح" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] text-zinc-400 font-medium", children: "JPEG, PNG, WEBP (بحد أقصى 5 ميجابايت)" })
+                      ] })
+                    ] })
+                  ]
+                }
+              ) }),
+              formData.backgroundImage && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative mt-4 w-full h-32 group", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: getProxiedImageUrl(formData.backgroundImage), className: "w-full h-full object-cover rounded-2xl border border-zinc-200 shadow-lg", alt: "Preview", referrerPolicy: "no-referrer" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => setFormData({ ...formData, backgroundImage: "" }),
+                    className: "absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "w-4 h-4" })
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Author" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    type: "text",
+                    value: formData.author,
+                    onChange: (e) => setFormData({ ...formData, author: e.target.value }),
+                    className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 outline-none"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Artist" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    type: "text",
+                    value: formData.artist,
+                    onChange: (e) => setFormData({ ...formData, artist: e.target.value }),
+                    className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 outline-none"
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Release Year" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    type: "number",
+                    value: formData.releaseYear || "",
+                    onChange: (e) => setFormData({ ...formData, releaseYear: parseInt(e.target.value) || (/* @__PURE__ */ new Date()).getFullYear() }),
+                    className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 outline-none"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Tags (comma separated)" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "input",
+                  {
+                    type: "text",
+                    value: formData.tags.join(", "),
+                    onChange: (e) => setFormData({ ...formData, tags: e.target.value.split(",").map((t) => t.trim()).filter((t) => t !== "") }),
+                    className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 outline-none",
+                    placeholder: "action, fantasy, magic"
+                  }
+                )
+              ] })
+            ] }),
+            isSmartImportMode && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pt-4 border-t border-zinc-100", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "block text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-2", children: "Chapters ZIP File" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "file",
+                  accept: ".zip",
+                  ref: smartZipInputRef,
+                  required: isSmartImportMode,
+                  onChange: (e) => {
+                    var _a;
+                    return setSmartImportFile(((_a = e.target.files) == null ? void 0 : _a[0]) || null);
+                  },
+                  className: "w-full bg-zinc-50 border border-zinc-200 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-emerald-500/20 outline-none"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] text-zinc-400 mt-2", children: "Upload a ZIP file containing the chapters. Folders will be parsed as chapters." })
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col-reverse sm:flex-row justify-end gap-3 sm:gap-4 pt-6 sm:pt-8 border-t border-zinc-100", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => setIsModalOpen(false),
+              className: "w-full sm:w-auto px-8 py-3 text-zinc-500 font-bold hover:bg-zinc-100 rounded-2xl transition-colors",
+              children: "Cancel"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "submit",
+              className: "w-full sm:w-auto px-12 py-3 bg-black text-white font-bold rounded-2xl hover:bg-zinc-800 transition-colors",
+              children: isSmartImportMode ? "Start Import" : editingSeries ? "Update Series" : "Create Series"
+            }
+          )
+        ] })
+      ] })
+    ] }) }),
+    isDeleteModalOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-8 space-y-6", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center space-y-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { className: "w-8 h-8" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xl font-black uppercase tracking-tight", children: "Delete Series?" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-zinc-500 font-medium", children: "This action cannot be undone. All chapters and data associated with this series will be lost." })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: () => setIsDeleteModalOpen(false),
+            className: "flex-1 py-3 bg-zinc-100 text-zinc-500 font-bold rounded-xl hover:bg-zinc-200 transition-colors",
+            children: "Cancel"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            onClick: confirmDelete,
+            className: "flex-1 py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors",
+            children: "Delete"
+          }
+        )
+      ] })
+    ] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(AnimatePresence, { children: isSmartImportModalOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      motion.div,
+      {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        className: "fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          motion.div,
+          {
+            initial: { scale: 0.95, opacity: 0 },
+            animate: { scale: 1, opacity: 1 },
+            exit: { scale: 0.95, opacity: 0 },
+            className: "bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-6 border-b border-zinc-100 flex justify-between items-center bg-zinc-50/50", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileArchive, { className: "w-5 h-5" }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-black tracking-tight", children: "Smart Bulk Import" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-zinc-500 font-medium", children: "Processing zip archive..." })
+                  ] })
+                ] }),
+                !isSmartImporting && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    onClick: () => setIsSmartImportModalOpen(false),
+                    className: "p-2 hover:bg-zinc-100 rounded-full transition-colors",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { className: "w-5 h-5" })
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-6 overflow-y-auto flex-1 bg-zinc-50/30", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3 font-mono text-sm", children: [
+                smartImportLog.map((log, index) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    className: `p-3 rounded-xl border ${log.type === "error" ? "bg-red-50 border-red-100 text-red-700" : log.type === "success" ? "bg-emerald-50 border-emerald-100 text-emerald-700" : log.type === "warning" ? "bg-amber-50 border-amber-100 text-amber-700" : "bg-white border-zinc-200 text-zinc-700"}`,
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "opacity-50 mr-3 text-xs", children: [
+                        "[",
+                        log.timestamp,
+                        "]"
+                      ] }),
+                      log.message
+                    ]
+                  },
+                  index
+                )),
+                isSmartImporting && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 text-zinc-500 p-3", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "w-4 h-4 animate-spin" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Processing..." })
+                ] })
+              ] }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-6 border-t border-zinc-100 bg-white flex justify-end", children: isSmartImporting ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => {
+                    cancelImportRef.current = true;
+                  },
+                  className: "px-6 py-2.5 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-colors",
+                  children: "Cancel Import"
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: () => setIsSmartImportModalOpen(false),
+                  className: "px-6 py-2.5 bg-black text-white font-bold rounded-xl hover:bg-zinc-800 transition-colors",
+                  children: "Close"
+                }
+              ) })
+            ]
+          }
+        )
+      }
+    ) })
+  ] });
+};
+export {
+  SeriesManagement
+};

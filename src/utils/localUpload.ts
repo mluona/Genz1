@@ -2,6 +2,7 @@
 // Stores files in Firebase Storage and returns public URLs.
 
 import { ref, uploadString, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import { Capacitor } from '@capacitor/core';
 import { storage } from '../firebase';
 
 export async function uploadToLocal(
@@ -12,17 +13,17 @@ export async function uploadToLocal(
   preFetched?: { uploadUrl: string, url: string }
 ): Promise<string | null> {
   try {
-    // Check if we are running in a Vercel deployment
-    const isVercel = typeof window !== 'undefined' && (
+    // Check if we are running in a Vercel deployment or native Capacitor app
+    const isVercelOrNative = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && (
       window.location.hostname.includes('vercel.app') || 
       window.location.hostname.includes('vercel.dev')
-    );
+    ));
 
     // Clean filename to be safe
     const cleanFilename = filename.replace(/[^a-zA-Z0-9./-_]/g, '_');
     
-    // 1. Try uploading to our local backend API route /api/upload first (only if NOT on Vercel)
-    if (!isVercel) {
+    // 1. Try uploading to our local backend API route /api/upload first (only if NOT on Vercel or native APK)
+    if (!isVercelOrNative) {
       try {
         console.log(`[Local Upload] Attempting local direct backend upload for ${filename}...`);
         if (onProgress) onProgress(10);
