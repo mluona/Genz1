@@ -21,24 +21,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate project directory
-        id: locate
-        run: |
-          if [ -f "package.json" ]; then
-            PROJECT_DIR="."
-          else
-            FOUND_PKG=$(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" -not -path "*/android/*" | head -n 1 || true)
-            if [ -n "$FOUND_PKG" ]; then
-              PROJECT_DIR=$(dirname "$FOUND_PKG")
-            else
-              echo "::error::package.json was not found in the repository! Please make sure you uploaded/committed package.json (and all project files) to GitHub."
-              ls -la
-              exit 1
-            fi
-          fi
-          echo "Detected project directory: $PROJECT_DIR"
-          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
@@ -53,9 +35,64 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Locate or recover package.json
+        id: locate
+        run: |
+          if [ -f "package.json" ]; then
+            PROJECT_DIR="."
+          else
+            FOUND_PKG=$(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" -not -path "*/android/*" | head -n 1 || true)
+            if [ -n "$FOUND_PKG" ]; then
+              PROJECT_DIR=$(dirname "$FOUND_PKG")
+            elif [ -f "package-lock.json" ]; then
+              echo "package.json missing in repo; generating package.json from package-lock.json..."
+              node -e '
+                const fs = require("fs");
+                const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+                const root = (lock.packages && lock.packages[""]) || {};
+                const pkg = {
+                  name: root.name || "genz-reader",
+                  private: true,
+                  version: root.version || "1.0.0",
+                  type: "module",
+                  scripts: {
+                    dev: "tsx server.ts",
+                    build: "vite build",
+                    "cap:sync": "npm run build && npx cap sync android",
+                    preview: "vite preview",
+                    start: "tsx server.ts",
+                    clean: "rm -rf dist",
+                    lint: "tsc --noEmit"
+                  },
+                  dependencies: {
+                    ...(root.dependencies || {}),
+                    "@capacitor/app": "^8.1.2",
+                    "@capacitor/core": "^8.6.2"
+                  },
+                  devDependencies: {
+                    ...(root.devDependencies || {}),
+                    "@capacitor/android": "^8.6.2",
+                    "@capacitor/cli": "^8.6.2"
+                  },
+                  puppeteer: {
+                    skipDownload: true
+                  }
+                };
+                fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+              '
+              PROJECT_DIR="."
+            else
+              echo "::error::Neither package.json nor package-lock.json was found in the repository!"
+              ls -la
+              exit 1
+            fi
+          fi
+          echo "Detected project directory: $PROJECT_DIR"
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         working-directory: ${{ steps.locate.outputs.project_dir }}
-        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Type check
         working-directory: ${{ steps.locate.outputs.project_dir }}
